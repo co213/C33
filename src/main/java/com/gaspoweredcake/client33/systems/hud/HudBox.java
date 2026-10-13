@@ -150,8 +150,10 @@ public class HudBox implements ISerializable<HudBox> {
 
     @Override
     public HudBox fromTag(CompoundTag tag) {
-        if (tag.getString("x-anchor").isPresent()) xAnchor = XAnchor.valueOf(tag.getString("x-anchor").get());
-        if (tag.getString("y-anchor").isPresent()) yAnchor = YAnchor.valueOf(tag.getString("y-anchor").get());
+        try { xAnchor = XAnchor.valueOf(tag.getStringOr("x-anchor", xAnchor.name())); }
+        catch (IllegalArgumentException ignored) { }
+        try { yAnchor = YAnchor.valueOf(tag.getStringOr("y-anchor", yAnchor.name())); }
+        catch (IllegalArgumentException ignored) { }
         if (tag.getInt("x").isPresent()) x = tag.getInt("x").get();
         if (tag.getInt("y").isPresent()) y = tag.getInt("y").get();
 

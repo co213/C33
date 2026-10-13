@@ -13,7 +13,7 @@ public class WClient33View extends WView implements Client33Widget {
     @Override
     protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
         if (canScroll && hasScrollBar) {
-            renderer.quad(handleX(), handleY(), handleWidth(), handleHeight(), theme().scrollbarColor.get(focused, handleMouseOver));
+            renderer.roundedQuad(handleX(), handleY(), handleWidth(), handleHeight(), handleWidth() / 2, theme().scrollbarColor.get(focused, handleMouseOver));
         }
     }
 }

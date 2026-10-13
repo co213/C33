@@ -104,7 +104,7 @@ public class Profile implements ISerializable<Profile> {
     }
 
     public File getFile() {
-        return new File(Profiles.FOLDER, name.get());
+        return ProfileFiles.resolve(Profiles.FOLDER.toPath(), name.get()).toFile();
     }
 
     @Override

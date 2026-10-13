@@ -24,6 +24,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.function.Predicate;
+import java.util.List;
+import java.util.Comparator;
 
 import static com.gaspoweredcake.client33.Client33.mc;
 
@@ -54,6 +56,46 @@ public class BaritonePathManager implements IPathManager {
         return BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().isPathing();
     }
 
+    @Override public boolean isPaused() { return pathingPaused; }
+    @Override public boolean supportsCommands() { return true; }
+    @Override public String getCommandPrefix() { return BaritoneAPI.getSettings().prefix.value; }
+
+    @Override
+    public boolean executeCommand(String command) {
+        return BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(command);
+    }
+
+    @Override
+    public List<CommandInfo> getCommands() {
+        return BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().getRegistry().stream()
+            .filter(command -> !command.hiddenFromHelp() && !command.getNames().isEmpty())
+            .map(command -> new CommandInfo(command.getNames().getFirst(), command.getShortDesc(), command.getLongDesc()))
+            .sorted(Comparator.comparing(CommandInfo::name)).toList();
+    }
+
+    @Override
+    public String getStatus() {
+        if (pathingPaused) return "Paused";
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        return baritone.getPathingControlManager().mostRecentInControl().map(IBaritoneProcess::displayName)
+            .orElseGet(() -> baritone.getPathingBehavior().getInProgress().isPresent() ? "Calculating path" : "Idle");
+    }
+
+    @Override
+    public Object getGoalToken() {
+        var process = BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess();
+        return process.isActive() ? process.getGoal() : null;
+    }
+
+    @Override
+    public boolean supportsNavigation() { return true; }
+
+    @Override
+    public boolean getAllowBreak() { return BaritoneAPI.getSettings().allowBreak.value; }
+
+    @Override
+    public void setAllowBreak(boolean value) { BaritoneAPI.getSettings().allowBreak.value = value; }
+
     @Override
     public void pause() {
         pathingPaused = true;
@@ -66,6 +108,8 @@ public class BaritonePathManager implements IPathManager {
 
     @Override
     public void stop() {
+        pathingPaused = false;
+        directionGoal = null;
         BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().cancelEverything();
     }
 

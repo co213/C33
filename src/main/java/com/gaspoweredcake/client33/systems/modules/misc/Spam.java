@@ -153,7 +153,7 @@ public class Spam extends Module {
                 text = messages.get().get(i);
                 if (bypass.get()) {
                     String bypass = RandomStringUtils.insecure().nextAlphabetic(length.get());
-                    if (!uppercase.get()) bypass = bypass.toLowerCase();
+                    if (!uppercase.get()) bypass = bypass.toLowerCase(java.util.Locale.ROOT);
 
                     text += " " + bypass;
                 }

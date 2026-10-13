@@ -11,7 +11,11 @@ Use Java 25 and run `./gradlew build`. The JAR is written to `build/libs/`.
 
 ## Install
 
-Install Fabric Loader for Minecraft 26.2, then put the built JAR in your Minecraft `mods` folder.
+Install Fabric Loader **0.19.5 or newer** for **Minecraft 26.2**, using **Java 25**, then put the built JAR in your Minecraft `mods` folder.
+
+Install a compatible **Baritone 26.2** build for automatic walking/mining, Base Finder and the Baritone dashboard. Avoid duplicate Baritone JARs. Press **Right Shift** to open the menu; `.settings baritone` opens its task dashboard directly.
+
+See [the feature guide](docs/gui-and-modules.md) for controls and [the project audit](docs/project-audit.md) for fixes, verification and remaining limits.
 
 ## Contribute
 

@@ -23,6 +23,6 @@ public class WClient33ConfirmedMinus extends WConfirmedMinus implements Client33
         Color bg = pressedOnce ? theme().minusColor.get() : theme.backgroundColor.get(pressed, mouseOver);
 
         renderBackground(renderer, this, outline, bg);
-        renderer.quad(x + pad, y + height / 2 - s / 2, width - pad * 2, s, fg);
+        renderer.roundedQuad(x + pad, y + height / 2 - s / 2, width - pad * 2, s, s / 2, fg);
     }
 }

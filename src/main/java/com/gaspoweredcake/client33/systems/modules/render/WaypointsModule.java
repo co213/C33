@@ -16,7 +16,7 @@ import com.gaspoweredcake.client33.gui.widgets.containers.WTable;
 import com.gaspoweredcake.client33.gui.widgets.pressable.WButton;
 import com.gaspoweredcake.client33.gui.widgets.pressable.WCheckbox;
 import com.gaspoweredcake.client33.gui.widgets.pressable.WConfirmedMinus;
-import com.gaspoweredcake.client33.pathing.PathManagers;
+import com.gaspoweredcake.client33.pathing.Navigation;
 import com.gaspoweredcake.client33.renderer.text.TextRenderer;
 import com.gaspoweredcake.client33.settings.*;
 import com.gaspoweredcake.client33.systems.modules.Categories;
@@ -112,7 +112,7 @@ public class WaypointsModule extends Module {
             // Only perform hide when near check if player is alive
             // Otherwise, death waypoints immediately get hidden
             boolean playerAlive = (mc.player != null && !mc.player.isDeadOrDying());
-            boolean waypointIsNear = waypoint.actionWhenNearCheck((int) Math.floor(dist));
+            boolean waypointIsNear = waypoint.actionWhenNearCheck((int) Math.floor(mc.player.position().distanceTo(Vec3.atCenterOf(blockPos))));
             if (playerAlive && waypointIsNear) {
                 switch (waypoint.actionWhenNear.get()) {
                     case Hide -> waypoint.visible.set(false);
@@ -203,16 +203,12 @@ public class WaypointsModule extends Module {
     }
 
     private void cleanDeathWPs(int max) {
-        int oldWpC = 0;
-
-        List<Waypoint> toRemove = new ArrayList<>();
+        List<Waypoint> deaths = new ArrayList<>();
         for (Waypoint wp : Waypoints.get()) {
-            if (wp.name.get().startsWith("Death ") && wp.icon.get().equals("skull")) {
-                oldWpC++;
-
-                if (oldWpC > max) toRemove.add(wp);
-            }
+            if (wp.name.get().startsWith("Death ") && wp.icon.get().equals("skull")) deaths.add(wp);
         }
+        // Waypoints retain insertion order; remove the oldest entries first.
+        List<Waypoint> toRemove = deaths.subList(0, Math.max(0, deaths.size() - max));
 
         Waypoints.get().removeAll(toRemove);
     }
@@ -248,13 +244,13 @@ public class WaypointsModule extends Module {
 
             // Goto
             if (validDim) {
-                WButton gotoB = table.add(theme.button("Goto")).widget();
-                gotoB.action = () -> {
-                    if (PathManagers.get().isPathing())
-                        PathManagers.get().stop();
-
-                    PathManagers.get().moveTo(waypoint.getPos());
-                };
+                for (boolean mine : new boolean[] { false, true }) {
+                    WButton gotoB = table.add(theme.button(mine ? "Mine to" : "Walk to")).widget();
+                    gotoB.action = () -> {
+                        try { Navigation.start(waypoint.getPos(), false, mine); }
+                        catch (IllegalStateException | IllegalArgumentException failure) { error(failure.getMessage()); }
+                    };
+                }
             }
 
             boolean isOperator = mc.player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
@@ -265,7 +261,7 @@ public class WaypointsModule extends Module {
 
                     String command = String.format(
                         "/execute in %s run tp %d %d %d",
-                        waypoint.dimension.toString(),
+                        waypoint.dimension.get().toString(),
                         pos.getX(),
                         pos.getY(),
                         pos.getZ()
@@ -285,6 +281,9 @@ public class WaypointsModule extends Module {
         }
 
         table.add(theme.horizontalSeparator()).expandX();
+        table.row();
+
+        table.add(theme.button("Stop navigation")).widget().action = Navigation::stop;
         table.row();
 
         WButton create = table.add(theme.button("Create")).expandX().widget();

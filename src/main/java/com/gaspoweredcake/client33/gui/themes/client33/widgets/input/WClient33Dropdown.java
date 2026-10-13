@@ -45,12 +45,7 @@ public class WClient33Dropdown<T> extends WDropdown<T> implements Client33Widget
         @Override
         protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
             Client33GuiTheme theme = theme();
-            double s = theme.scale(2);
-            Color c = theme.outlineColor.get();
-
-            renderer.quad(x, y + height - s, width, s, c);
-            renderer.quad(x, y, s, height - s, c);
-            renderer.quad(x + width - s, y, s, height - s, c);
+            renderBackground(renderer, this, theme.outlineColor.get(), theme.backgroundColor.get());
         }
     }
 
@@ -72,7 +67,7 @@ public class WClient33Dropdown<T> extends WDropdown<T> implements Client33Widget
             color.a += color.a / 2;
             color.validate();
 
-            renderer.quad(this, color);
+            renderer.roundedQuad(this, theme.scale(4), color);
 
             color.a = preA;
 

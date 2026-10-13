@@ -16,6 +16,7 @@ import com.gaspoweredcake.client33.gui.tabs.TabScreen;
 import com.gaspoweredcake.client33.gui.tabs.Tabs;
 import com.gaspoweredcake.client33.gui.tabs.builtin.ConfigTab;
 import com.gaspoweredcake.client33.gui.tabs.builtin.HudTab;
+import com.gaspoweredcake.client33.gui.tabs.builtin.PathManagerTab;
 import com.gaspoweredcake.client33.settings.Setting;
 import com.gaspoweredcake.client33.systems.config.Config;
 import com.gaspoweredcake.client33.systems.modules.Module;
@@ -30,6 +31,13 @@ public class SettingCommand extends Command {
 
     @Override
     public void build(LiteralArgumentBuilder<ClientSuggestionProvider> builder) {
+        builder.then(literal("baritone").executes(_ -> {
+            TabScreen screen = Tabs.get(PathManagerTab.class).createScreen(GuiThemes.get());
+            screen.parent = null;
+            Utils.screenToOpen = screen;
+            return SINGLE_SUCCESS;
+        }));
+
         // Open hud screen
         builder.then(
             literal("hud")

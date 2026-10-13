@@ -30,7 +30,7 @@ public class WClient33Checkbox extends WCheckbox implements Client33Widget {
 
         if (animProgress > 0) {
             double cs = (width - theme.scale(2)) / 1.75 * animProgress;
-            renderer.quad(x + (width - cs) / 2, y + (height - cs) / 2, cs, cs, theme.checkboxColor.get());
+            renderer.roundedQuad(x + (width - cs) / 2, y + (height - cs) / 2, cs, cs, theme.scale(3), theme.checkboxColor.get());
         }
     }
 }

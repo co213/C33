@@ -39,13 +39,22 @@ public class AccountCache implements ISerializable<AccountCache> {
 
         loadingHead = true;
 
+        String requestedUuid = uuid;
         Client33Executor.execute(() -> {
-            byte[] head = PlayerHeadUtils.fetchHead(UndashedUuid.fromStringLenient(uuid));
-
+            byte[] downloaded = null;
+            try {
+                downloaded = PlayerHeadUtils.fetchHead(UndashedUuid.fromStringLenient(requestedUuid));
+            } catch (RuntimeException failure) {
+                com.gaspoweredcake.client33.Client33.LOG.warn("Could not load account head.", failure);
+            }
+            byte[] head = downloaded;
             mc.execute(() -> {
-                if (head != null) headTexture = new PlayerHeadTexture(head, true);
-                loadingHead = false;
-                if (callback != null) callback.run();
+                try {
+                    if (head != null && requestedUuid.equals(uuid)) headTexture = new PlayerHeadTexture(head, true);
+                } finally {
+                    loadingHead = false;
+                    if (callback != null) callback.run();
+                }
             });
         });
     }

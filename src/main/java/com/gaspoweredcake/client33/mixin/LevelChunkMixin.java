@@ -26,6 +26,9 @@ public abstract class LevelChunkMixin {
 
     @Inject(method = "setBlockState", at = @At("TAIL"))
     private void onSetBlockState(BlockPos pos, BlockState state, int flags, CallbackInfoReturnable<BlockState> cir) {
-        if (level.isClientSide()) Client33.EVENT_BUS.post(BlockUpdateEvent.get(pos, cir.getReturnValue(), state));
+        BlockState previous = cir.getReturnValue();
+        if (level.isClientSide() && previous != null && previous != state) {
+            Client33.EVENT_BUS.post(BlockUpdateEvent.get(pos, previous, state));
+        }
     }
 }

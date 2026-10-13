@@ -22,6 +22,8 @@ import com.gaspoweredcake.client33.gui.widgets.pressable.WConfirmedMinus;
 import com.gaspoweredcake.client33.settings.Setting;
 import com.gaspoweredcake.client33.systems.profiles.Profile;
 import com.gaspoweredcake.client33.systems.profiles.Profiles;
+import com.gaspoweredcake.client33.systems.profiles.ProfileFiles;
+import com.gaspoweredcake.client33.utils.files.AtomicFile;
 import com.gaspoweredcake.client33.utils.Utils;
 import com.gaspoweredcake.client33.utils.misc.NbtUtils;
 import com.gaspoweredcake.client33.utils.render.prompts.OkPrompt;
@@ -34,15 +36,12 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import static com.gaspoweredcake.client33.Client33.mc;
 
@@ -90,6 +89,14 @@ public class ProfilesTab extends Tab {
             WButton create = l.add(theme.button("Create")).expandX().widget();
             create.tooltip = "Create new profile";
             create.action = () -> mc.gui.setScreen(new EditProfileScreen(theme, null, this::reload));
+
+            WButton refresh = l.add(theme.button("Refresh")).expandX().widget();
+            refresh.tooltip = "Find copied profile folders without changing their saved settings";
+            refresh.action = () -> {
+                Profiles.get().refresh();
+                Profiles.get().save();
+                reload();
+            };
 
             // Import
             WButton importBtn = l.add(theme.button("Import")).expandX().widget();
@@ -150,52 +157,20 @@ public class ProfilesTab extends Tab {
             CompoundTag nbt = NbtIo.read(profileFile.toPath());
             if (nbt == null) return null;
 
-            Profile p = new Profile();
-            Optional<String> parsedName = nbt.getString("name").filter(n -> !n.isEmpty());
-
-            if (parsedName.filter(p.name::set).isEmpty() && !p.name.set(FilenameUtils.removeExtension(profileFile.getName()))) {
-                throw new IllegalStateException("Imported profile does not have a valid name.");
-            }
-
-            File profileFolder = p.getFile().getCanonicalFile();
-            if (!profileFolder.getParentFile().equals(Profiles.FOLDER.getCanonicalFile())) {
-                throw new IllegalStateException("Imported profile does not have a valid location.");
-            }
-
-            //noinspection ResultOfMethodCallIgnored
-            profileFolder.mkdirs();
-            nbt.remove("name");
-
-            boolean valid = false;
+            String requested = nbt.getStringOr("name", "");
+            if (!ProfileFiles.validName(requested)) requested = FilenameUtils.removeExtension(profileFile.getName());
+            String name = Profiles.get().availableName(requested);
+            List<String> filenames = new ArrayList<>();
             for (var entry : nbt.entrySet()) {
-                String filename = entry.getKey();
-                if (!filename.endsWith(".nbt")) continue;
-                if (filename.contains("/") || filename.contains("\\") || new File(filename).isAbsolute()) continue;
-
-                switch (filename) {
-                    case "hud.nbt" -> p.hud.set(true);
-                    case "macros.nbt" -> p.macros.set(true);
-                    case "modules.nbt" -> p.modules.set(true);
-                    default -> {
-                        if (filename.endsWith(".nbt")) p.waypoints.set(true);
-                    }
-                }
-
-                File f = new File(profileFolder, filename).getCanonicalFile();
-                if (!f.toPath().startsWith(profileFolder.toPath())) continue;
-
-                valid = true;
-                NbtIo.writeUnnamedTagWithFallback(entry.getValue(), new DataOutputStream(new FileOutputStream(f)));
+                if (!ProfileFiles.isDataFile(entry.getKey())) continue;
+                if (!(entry.getValue() instanceof CompoundTag)) throw new IOException("Profile entries must contain compound settings.");
+                filenames.add(entry.getKey());
             }
-
-            if (!valid) {
-                throw new IllegalStateException("Imported file is not a profile.");
-            }
-
-            Profiles.get().getAll().add(p);
+            ProfileFiles.importFiles(Profiles.FOLDER.toPath(), name, filenames,
+                (filename, destination) -> NbtIo.write(nbt.getCompoundOrEmpty(filename), destination));
+            Profiles.get().refresh();
             Profiles.get().save();
-
-            return p;
+            return Profiles.get().get(name);
         }
 
         @Override
@@ -213,13 +188,15 @@ public class ProfilesTab extends Tab {
         private WContainer settingsContainer;
         private final Profile profile;
         private final boolean isNew;
+        private final Profile original;
         private final Runnable action;
 
         public EditProfileScreen(GuiTheme theme, Profile profile, Runnable action) {
             super(theme, profile == null ? "New Profile" : "Edit Profile");
 
             this.isNew = profile == null;
-            this.profile = isNew ? new Profile() : profile;
+            this.original = profile;
+            this.profile = isNew ? new Profile() : new Profile(profile.toTag());
             this.action = action;
         }
 
@@ -232,14 +209,6 @@ public class ProfilesTab extends Tab {
 
             WButton save = add(theme.button(isNew ? "Create" : "Save")).expandX().widget();
             save.action = () -> {
-                if (profile.name.get().isEmpty()) return;
-
-                if (isNew) {
-                    for (Profile p : Profiles.get()) {
-                        if (profile.equals(p)) return;
-                    }
-                }
-
                 List<String> valid = new ArrayList<>();
                 for (String address : profile.loadOnJoin.get()) {
                     if (Utils.resolveAddress(address)) valid.add(address);
@@ -247,10 +216,14 @@ public class ProfilesTab extends Tab {
 
                 profile.loadOnJoin.set(valid);
 
-                if (isNew) Profiles.get().add(profile);
-                else Profiles.get().save();
-
-                onClose();
+                try {
+                    if (isNew) Profiles.get().add(profile);
+                    else Profiles.get().update(original, profile);
+                    onClose();
+                } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+                    OkPrompt.create().title("Cannot save profile").message("%s", e.getMessage())
+                        .dontShowAgainCheckboxVisible(false).show();
+                }
             };
 
             enterAction = save.action;
@@ -318,23 +291,22 @@ public class ProfilesTab extends Tab {
             nbt.putString("name", profile.name.get());
 
             try {
-                for (File f : profile.getFile().listFiles()) {
-                    if (f.getName().equals("hud.nbt") && hud ||
-                        f.getName().equals("macros.nbt") && macros ||
-                        f.getName().equals("modules.nbt") && modules
-                    ) {
-                        nbt.put(f.getName(), NbtIo.read(f.toPath()));
-                    } else if (f.getName().endsWith(".nbt") && waypoints)
-                        nbt.put(f.getName(), NbtIo.read(f.toPath()));
+                for (Path file : ProfileFiles.dataFiles(profile.getFile().toPath())) {
+                    String filename = file.getFileName().toString();
+                    if (ProfileFiles.selected(filename, hud, macros, modules, waypoints)) {
+                        CompoundTag data = NbtIo.read(file);
+                        if (data == null) throw new IOException("Unreadable profile data: " + filename);
+                        nbt.put(filename, data);
+                    }
                 }
-
-                NbtIo.write(nbt, p);
-            } catch (IOException e) {
+                if (nbt.size() == 1) throw new IOException("No saved data matches the selected export options.");
+                AtomicFile.write(p, staged -> NbtIo.write(nbt, staged));
+            } catch (IOException | IllegalArgumentException e) {
                 Client33.LOG.error("Error serialising profile {} to a file", profile.name.get(), e);
                 OkPrompt.create()
                     .title("Failure exporting profile")
-                    .message("There was an error serialising or exporting the profile %d.", profile.name.get())
-                    .message("Error: %d", e.getMessage())
+                    .message("There was an error serialising or exporting the profile %s.", profile.name.get())
+                    .message("Error: %s", e.getMessage())
                     .dontShowAgainCheckboxVisible(false)
                     .show();
             }

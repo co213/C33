@@ -13,6 +13,8 @@ import net.minecraft.world.level.block.Block;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.InetSocketAddress;
+import static com.gaspoweredcake.client33.Client33.mc;
 
 public class SwarmWorker extends Thread {
     private Socket socket;
@@ -20,13 +22,16 @@ public class SwarmWorker extends Thread {
 
     public SwarmWorker(String ip, int port) {
         try {
-            socket = new Socket(ip, port);
+            socket = new Socket();
+            socket.connect(new InetSocketAddress(ip, port), 5000);
         } catch (Exception e) {
+            if (socket != null) try { socket.close(); } catch (IOException ignored) { }
             socket = null;
             ChatUtils.warningPrefix("Swarm", "Server not found at %s on port %s.", ip, port);
             e.printStackTrace();
         }
 
+        setDaemon(true);
         if (socket != null) start();
     }
 
@@ -34,8 +39,7 @@ public class SwarmWorker extends Thread {
     public void run() {
         ChatUtils.infoPrefix("Swarm", "Connected to Swarm host on at %s on port %s.", getIp(socket.getInetAddress().getHostAddress()), socket.getPort());
 
-        try {
-            DataInputStream in = new DataInputStream(socket.getInputStream());
+        try (DataInputStream in = new DataInputStream(socket.getInputStream())) {
 
 
             while (!isInterrupted()) {
@@ -44,16 +48,19 @@ public class SwarmWorker extends Thread {
                 if (read.startsWith("swarm")) {
                     ChatUtils.infoPrefix("Swarm", "Received command: (highlight)%s", read);
 
-                    try {
-                        Commands.dispatch(read);
-                    } catch (Exception e) {
-                        ChatUtils.error("Error fetching command.");
-                        e.printStackTrace();
-                    }
+                    var world = mc.level;
+                    mc.execute(() -> {
+                        if (isInterrupted() || mc.level != world || mc.getConnection() == null) return;
+                        try {
+                            Commands.dispatch(read);
+                        } catch (Exception e) {
+                            ChatUtils.error("Error executing swarm command.");
+                        }
+                    });
                 }
             }
 
-            in.close();
+
         } catch (IOException e) {
             ChatUtils.errorPrefix("Swarm", "Error in connection to host.");
             e.printStackTrace();
@@ -62,13 +69,15 @@ public class SwarmWorker extends Thread {
     }
 
     public void disconnect() {
+        interrupt();
+        if (socket == null || socket.isClosed()) return;
         try {
             socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        PathManagers.get().stop();
+        mc.execute(() -> PathManagers.get().stop());
 
         ChatUtils.infoPrefix("Swarm", "Disconnected from host.");
 

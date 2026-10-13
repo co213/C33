@@ -30,8 +30,12 @@ public class Vector3dSetting extends Setting<Vector3d> {
     }
 
     public boolean set(double x, double y, double z) {
-        value.set(x, y, z);
-        return super.set(value);
+        return set(new Vector3d(x, y, z));
+    }
+
+    @Override
+    public boolean set(Vector3d value) {
+        return value != null && super.set(new Vector3d(value));
     }
 
     @Override
@@ -43,7 +47,8 @@ public class Vector3dSetting extends Setting<Vector3d> {
     @Override
     protected Vector3d parseImpl(String str) {
         try {
-            String[] strs = str.split(" ");
+            String[] strs = str.strip().split("\\s+");
+            if (strs.length != 3) return null;
             return new Vector3d(Double.parseDouble(strs[0]), Double.parseDouble(strs[1]), Double.parseDouble(strs[2]));
         } catch (IndexOutOfBoundsException | NumberFormatException _) {
             return null;
@@ -52,7 +57,7 @@ public class Vector3dSetting extends Setting<Vector3d> {
 
     @Override
     protected boolean isValueValid(Vector3d value) {
-        return value.x >= min && value.x <= max && value.y >= min && value.y <= max && value.z >= min && value.z <= max;
+        return value.isFinite() && value.x >= min && value.x <= max && value.y >= min && value.y <= max && value.z >= min && value.z <= max;
     }
 
     @Override

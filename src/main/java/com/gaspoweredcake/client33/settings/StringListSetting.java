@@ -35,12 +35,26 @@ public class StringListSetting extends Setting<List<String>> {
 
     @Override
     protected List<String> parseImpl(String str) {
-        return Arrays.asList(str.split(","));
+        return new ArrayList<>(Arrays.asList(str.split(",", -1)));
     }
 
     @Override
     protected boolean isValueValid(List<String> value) {
+        if (value == null) return false;
+        for (String text : value) {
+            if (text == null) return false;
+            if (filter != null) {
+                for (int i = 0; i < text.length(); i++) {
+                    if (!filter.filter(text.substring(0, i), text.charAt(i))) return false;
+                }
+            }
+        }
         return true;
+    }
+
+    @Override
+    public boolean set(List<String> value) {
+        return value != null && super.set(new ArrayList<>(value));
     }
 
     @Override
@@ -56,13 +70,13 @@ public class StringListSetting extends Setting<List<String>> {
 
     @Override
     public List<String> load(CompoundTag tag) {
-        get().clear();
-
+        List<String> loaded = new ArrayList<>();
         ListTag valueTag = tag.getListOrEmpty("value");
         for (Tag tagI : valueTag) {
-            get().add(tagI.asString().orElse(""));
+            tagI.asString().ifPresent(loaded::add);
         }
 
+        set(loaded);
         return get();
     }
 

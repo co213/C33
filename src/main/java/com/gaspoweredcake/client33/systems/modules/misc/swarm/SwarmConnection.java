@@ -10,13 +10,16 @@ import com.gaspoweredcake.client33.utils.player.ChatUtils;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 public class SwarmConnection extends Thread {
     public final Socket socket;
-    public String messageToSend;
+    private final BlockingQueue<String> messages = new ArrayBlockingQueue<>(128);
 
     public SwarmConnection(Socket socket) {
         this.socket = socket;
+        setDaemon(true);
         start();
     }
 
@@ -24,31 +27,27 @@ public class SwarmConnection extends Thread {
     public void run() {
         ChatUtils.infoPrefix("Swarm", "New worker connected on %s.", getIp(socket.getInetAddress().getHostAddress()));
 
-        try {
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-
+        try (DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
             while (!isInterrupted()) {
-                if (messageToSend != null) {
-                    try {
-                        out.writeUTF(messageToSend);
-                        out.flush();
-                    } catch (Exception e) {
-                        ChatUtils.errorPrefix("Swarm", "Encountered error when sending command.");
-                        e.printStackTrace();
-                    }
-
-                    messageToSend = null;
-                }
+                out.writeUTF(messages.take());
+                out.flush();
             }
-
-            out.close();
+        } catch (InterruptedException e) {
+            interrupt();
         } catch (IOException e) {
-            ChatUtils.infoPrefix("Swarm", "Error creating a connection with %s on port %s.", getIp(socket.getInetAddress().getHostAddress()), socket.getPort());
-            e.printStackTrace();
+            if (!socket.isClosed()) ChatUtils.errorPrefix("Swarm", "Connection to worker closed.");
+        } finally {
+            disconnect();
         }
     }
 
+    public boolean sendMessage(String message) {
+        return !socket.isClosed() && !isInterrupted() && messages.offer(message);
+    }
+
     public void disconnect() {
+        interrupt();
+        if (socket.isClosed()) return;
         try {
             socket.close();
         } catch (IOException e) {

@@ -35,7 +35,7 @@ public class StringSetting extends Setting<String> {
     protected boolean isValueValid(String value) {
         if (filter == null) return true;
         for (int i = 0; i < value.length(); i++) {
-            if (!filter.filter(value, value.charAt(i))) return false;
+            if (!filter.filter(value.substring(0, i), value.charAt(i))) return false;
         }
         return true;
     }

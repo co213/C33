@@ -55,6 +55,8 @@ public abstract class CommandSuggestionsMixin {
         String prefix = Config.get().prefix.get();
         int length = prefix.length();
 
+        if (mc.getConnection() == null) return;
+
         if (reader.canRead(length) && reader.getString().startsWith(prefix, reader.getCursor())) {
             reader.setCursor(reader.getCursor() + length);
 
@@ -64,12 +66,16 @@ public abstract class CommandSuggestionsMixin {
 
             int cursor = input.getCursorPosition();
             if (cursor >= length && (this.suggestions == null || !this.keepSuggestions)) {
-                this.pendingSuggestions = Commands.DISPATCHER.getCompletionSuggestions(this.currentParse, cursor);
-                this.pendingSuggestions.thenAccept(suggestionResult -> {
-                    if (this.pendingSuggestions.isDone()) {
-                        this.updateUsageInfo(this.currentParse, suggestionResult);
+                var parse = this.currentParse;
+                String text = input.getValue();
+                var future = Commands.DISPATCHER.getCompletionSuggestions(parse, cursor);
+                this.pendingSuggestions = future;
+                future.whenComplete((result, failure) -> mc.execute(() -> {
+                    if (failure == null && this.pendingSuggestions == future && this.currentParse == parse
+                        && input.getValue().equals(text) && input.getCursorPosition() == cursor) {
+                        this.updateUsageInfo(parse, result);
                     }
-                });
+                }));
             }
 
             ci.cancel();

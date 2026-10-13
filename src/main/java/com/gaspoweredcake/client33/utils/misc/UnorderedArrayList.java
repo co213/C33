@@ -9,6 +9,8 @@ import org.jspecify.annotations.NonNull;
 
 import java.util.AbstractList;
 import java.util.Arrays;
+import java.util.BitSet;
+import java.util.ConcurrentModificationException;
 import java.util.Objects;
 import java.util.function.Predicate;
 
@@ -35,6 +37,7 @@ public class UnorderedArrayList<T> extends AbstractList<T> {
 
     @Override
     public T set(int index, T element) {
+        Objects.checkIndex(index, size);
         T old = items[index];
         items[index] = element;
         return old;
@@ -42,6 +45,7 @@ public class UnorderedArrayList<T> extends AbstractList<T> {
 
     @Override
     public T get(int index) {
+        Objects.checkIndex(index, size);
         return items[index];
     }
 
@@ -74,38 +78,39 @@ public class UnorderedArrayList<T> extends AbstractList<T> {
         int i = indexOf(o);
         if (i == -1) return false;
 
-        items[i] = null;
-        items[i] = items[--size];
-        modCount++;
+        remove(i);
         return true;
     }
 
     @Override
     public T remove(int index) {
+        Objects.checkIndex(index, size);
         T old = items[index];
-        items[index] = null;
         items[index] = items[--size];
+        items[size] = null;
         modCount++;
         return old;
     }
 
     @Override
     public boolean removeIf(@NonNull Predicate<? super T> filter) {
-        int preSize = size;
-        int j = 0;
-
-        for (int i = 0; i < size; i++) {
-            T item = items[i];
-
-            if (!filter.test(item)) {
-                if (j < i) items[j] = item;
-
-                j++;
-            }
+        Objects.requireNonNull(filter);
+        int expectedModCount = modCount;
+        int oldSize = size;
+        BitSet removed = new BitSet(oldSize);
+        for (int i = 0; i < oldSize; i++) {
+            if (filter.test(items[i])) removed.set(i);
+            if (modCount != expectedModCount) throw new ConcurrentModificationException();
         }
-
-        size = j;
-        return size != preSize;
+        if (removed.isEmpty()) return false;
+        int next = 0;
+        for (int i = 0; i < oldSize; i++) {
+            if (!removed.get(i)) items[next++] = items[i];
+        }
+        Arrays.fill(items, next, oldSize, null);
+        size = next;
+        modCount++;
+        return true;
     }
 
     @Override

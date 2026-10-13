@@ -1893,7 +1893,7 @@ public class HighwayBuilder extends Module {
                     if (
                         BlockUtils.canBreak(pos.getBlockPos(), pos.getState())
                             && (mineBlocksToPlace || !b.blocksToPlace.get().contains(pos.getState().getBlock()))
-                            && !BlockUtils.canInstaBreak(pos.getBlockPos()) && (!Modules.get().get(SpeedMine.class).instamine() || pos.getState().getDestroyProgress(b.mc.player, b.mc.level, pos.getBlockPos()) <= 0.5)
+                            && !BlockUtils.canInstaBreak(pos.getBlockPos()) && !Modules.get().get(SpeedMine.class).canInstantMine(pos.getBlockPos(), pos.getState())
                             && (b.normalMining == null || !pos.getBlockPos().equals(b.normalMining.blockPos))
                             && (b.packetMining == null || !pos.getBlockPos().equals(b.packetMining.blockPos))
                     ) {

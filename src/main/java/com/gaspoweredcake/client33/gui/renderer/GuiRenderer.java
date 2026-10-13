@@ -234,6 +234,40 @@ public class GuiRenderer {
         quad(x, y, width, height, color, color);
     }
 
+    /** Rounded geometry uses the same colored mesh and scissor stack as other GUI shapes. */
+    public void roundedQuad(double x, double y, double width, double height, double radius, Color color) {
+        if (!(width > 0 && height > 0) || !Double.isFinite(width + height + x + y + radius)) return;
+        radius = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+        if (radius == 0) { quad(x, y, width, height, color); return; }
+        quad(x + radius, y, width - 2 * radius, height, color);
+        quad(x, y + radius, radius, height - 2 * radius, color);
+        quad(x + width - radius, y + radius, radius, height - 2 * radius, color);
+        for (int corner = 0; corner < 4; corner++) {
+            double cx = x + (corner == 0 || corner == 3 ? width - radius : radius);
+            double cy = y + (corner < 2 ? height - radius : radius);
+            for (int segment = 0; segment < 8; segment++) {
+                int index = corner * 8 + segment;
+                r.triangles.ensureTriCapacity();
+                r.triangles.triangle(
+                    r.triangles.vec2(cx, cy).color(color).next(),
+                    r.triangles.vec2(cx + ROUND_COS[index + 1] * radius, cy + ROUND_SIN[index + 1] * radius).color(color).next(),
+                    r.triangles.vec2(cx + ROUND_COS[index] * radius, cy + ROUND_SIN[index] * radius).color(color).next());
+            }
+        }
+    }
+
+    private static final double[] ROUND_COS = new double[33], ROUND_SIN = new double[33];
+    static {
+        for (int i = 0; i <= 32; i++) {
+            ROUND_COS[i] = Math.cos(i * Math.PI / 16);
+            ROUND_SIN[i] = Math.sin(i * Math.PI / 16);
+        }
+    }
+
+    public void roundedQuad(WWidget widget, double radius, Color color) {
+        roundedQuad(widget.x, widget.y, widget.width, widget.height, radius, color);
+    }
+
     public void quad(WWidget widget, Color color) {
         quad(widget.x, widget.y, widget.width, widget.height, color);
     }

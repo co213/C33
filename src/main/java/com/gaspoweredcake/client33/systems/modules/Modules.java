@@ -83,7 +83,7 @@ public class Modules extends System<Modules> {
     }
 
     @Override
-    public void load(File folder) {
+    public synchronized void load(File folder) {
         for (Module module : getAll()) {
             for (SettingGroup group : module.settings) {
                 for (Setting<?> setting : group) setting.reset();
@@ -527,6 +527,7 @@ public class Modules extends System<Modules> {
     private void initWorld() {
         add(new Ambience());
         add(new AutoBreed());
+        add(new AutoFarm());
         add(new AutoBrewer());
         add(new AutoMount());
         add(new AutoNametag());
@@ -544,6 +545,7 @@ public class Modules extends System<Modules> {
         add(new Nuker());
         add(new PacketMine());
         add(new StashFinder());
+        add(new BaseFinder());
         add(new SpawnProofer());
         add(new Timer());
         add(new VeinMiner());

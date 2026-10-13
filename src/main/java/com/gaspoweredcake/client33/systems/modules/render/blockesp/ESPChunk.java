@@ -11,9 +11,7 @@ import com.gaspoweredcake.client33.events.render.Render3DEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.List;
 
@@ -50,7 +48,7 @@ public class ESPChunk {
     public void remove(BlockPos blockPos) {
         if (blocks != null) {
             ESPBlock block = blocks.remove(ESPBlock.getKey(blockPos));
-            if (block != null) block.group.remove(block);
+            if (block != null && block.group != null) block.group.remove(block);
         }
     }
 
@@ -86,25 +84,39 @@ public class ESPChunk {
     }
 
 
-    public static ESPChunk searchChunk(ChunkAccess chunk, List<Block> blocks) {
-        ESPChunk schunk = new ESPChunk(chunk.getPos().x(), chunk.getPos().z());
-        if (schunk.shouldBeDeleted()) return schunk;
+    /** Client-thread incremental scan; palette filtering skips sections with no selected blocks. */
+    public static final class Search {
+        public final ChunkAccess source;
+        public final ESPChunk result;
+        private final java.util.Set<Block> selected;
+        private final BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
+        private int section, offset;
 
-        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
-
-        for (int x = chunk.getPos().getMinBlockX(); x <= chunk.getPos().getMaxBlockX(); x++) {
-            for (int z = chunk.getPos().getMinBlockZ(); z <= chunk.getPos().getMaxBlockZ(); z++) {
-                int height = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE).getFirstAvailable(x - chunk.getPos().getMinBlockX(), z - chunk.getPos().getMinBlockZ());
-
-                for (int y = mc.level.getMinY(); y < height; y++) {
-                    blockPos.set(x, y, z);
-                    BlockState bs = chunk.getBlockState(blockPos);
-
-                    if (blocks.contains(bs.getBlock())) schunk.add(blockPos, false);
-                }
-            }
+        public Search(ChunkAccess chunk, List<Block> blocks) {
+            source = chunk;
+            result = new ESPChunk(chunk.getPos().x(), chunk.getPos().z());
+            selected = java.util.Set.copyOf(blocks);
         }
 
-        return schunk;
+        public boolean advance(int budget) {
+            var sections = source.getSections();
+            while (section < sections.length && budget-- > 0) {
+                var palette = sections[section];
+                if (offset == 0 && !palette.maybeHas(state -> selected.contains(state.getBlock()))) { section++; continue; }
+                int x = offset & 15, z = (offset >> 4) & 15, y = offset >> 8;
+                if (selected.contains(palette.getBlockState(x, y, z).getBlock())) {
+                    position.set(source.getPos().getMinBlockX() + x, source.getMinY() + section * 16 + y, source.getPos().getMinBlockZ() + z);
+                    result.add(position, false);
+                }
+                if (++offset == 4096) { offset = 0; section++; }
+            }
+            return section == sections.length;
+        }
+    }
+
+    public static ESPChunk searchChunk(ChunkAccess chunk, List<Block> blocks) {
+        Search search = new Search(chunk, blocks);
+        search.advance(Integer.MAX_VALUE);
+        return search.result;
     }
 }

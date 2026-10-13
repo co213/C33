@@ -9,8 +9,9 @@ public class UuidToProfileResponse {
     public Property[] properties;
 
     public String getPropertyValue(String name) {
+        if (properties == null) return null;
         for (Property property : properties) {
-            if (property.name.equals(name)) return property.value;
+            if (property != null && name.equals(property.name)) return property.value;
         }
 
         return null;

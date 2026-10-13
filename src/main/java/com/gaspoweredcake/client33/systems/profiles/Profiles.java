@@ -16,6 +16,8 @@ import net.minecraft.nbt.CompoundTag;
 import org.jspecify.annotations.NonNull;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -34,7 +36,17 @@ public class Profiles extends System<Profiles> implements Iterable<Profile> {
     }
 
     public void add(Profile profile) {
-        if (!profiles.contains(profile)) profiles.add(profile);
+        if (!ProfileFiles.validName(profile.name.get()) || get(profile.name.get()) != null) {
+            throw new IllegalArgumentException("Profile name is invalid or already in use.");
+        }
+        try {
+            if (ProfileFiles.exists(FOLDER.toPath(), profile.name.get())) {
+                throw new IllegalArgumentException("A profile folder with this name already exists. Use Refresh to recover it.");
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not inspect profile folders.", e);
+        }
+        profiles.add(profile);
         profile.save();
         save();
     }
@@ -55,7 +67,7 @@ public class Profiles extends System<Profiles> implements Iterable<Profile> {
     }
 
     public List<Profile> getAll() {
-        return profiles;
+        return List.copyOf(profiles);
     }
 
     @Override
@@ -78,7 +90,7 @@ public class Profiles extends System<Profiles> implements Iterable<Profile> {
 
     @Override
     public @NonNull Iterator<Profile> iterator() {
-        return profiles.iterator();
+        return getAll().iterator();
     }
 
     @Override
@@ -90,25 +102,77 @@ public class Profiles extends System<Profiles> implements Iterable<Profile> {
 
     @Override
     public Profiles fromTag(CompoundTag tag) {
-        profiles = NbtUtils.listFromTag(tag.getListOrEmpty("profiles"), Profile::new);
-
-        for (File file : FOLDER.listFiles()) {
-            if (file.isDirectory() && get(file.getName()) == null) {
-                Profile p = new Profile();
-                p.name.set(file.getName());
-
-                boolean add = false;
-                for (File f : file.listFiles()) {
-                    if (f.getName().equals("hud.nbt")) p.hud.set(add = true);
-                    else if (f.getName().equals("macros.nbt")) p.macros.set(add = true);
-                    else if (f.getName().equals("modules.nbt")) p.modules.set(add = true);
-                    else if (f.getName().endsWith(".nbt")) p.waypoints.set(add = true);
-                }
-
-                if (add) add(p);
+        List<Profile> loaded = NbtUtils.listFromTag(tag.getListOrEmpty("profiles"), Profile::new);
+        profiles = new ArrayList<>();
+        for (Profile profile : loaded) {
+            if (!ProfileFiles.validName(profile.name.get()) || get(profile.name.get()) != null) continue;
+            try {
+                profile.getFile();
+                profiles.add(profile);
+            } catch (IllegalArgumentException e) {
+                Client33.LOG.warn("Skipping profile with an invalid folder: {}", profile.name.get());
             }
         }
-
+        refresh();
         return this;
+    }
+
+    @Override
+    public synchronized void load(File folder) {
+        super.load(folder);
+        // Also recover copied folders when the index is missing or unreadable.
+        refresh();
+    }
+
+    /** Discover saved data without calling Profile.save(), which captures live settings. */
+    public int refresh() {
+        int added = 0;
+        try {
+            for (Path folder : ProfileFiles.discover(FOLDER.toPath())) {
+                if (get(folder.getFileName().toString()) != null) continue;
+                Profile profile = new Profile();
+                profile.name.set(folder.getFileName().toString());
+                List<Path> files;
+                try {
+                    files = ProfileFiles.dataFiles(folder);
+                } catch (IOException e) {
+                    Client33.LOG.warn("Could not inspect profile folder '{}'.", folder, e);
+                    continue;
+                }
+                if (files.isEmpty()) continue;
+                for (Path file : files) {
+                    switch (file.getFileName().toString()) {
+                        case "hud.nbt" -> profile.hud.set(true);
+                        case "macros.nbt" -> profile.macros.set(true);
+                        case "modules.nbt" -> profile.modules.set(true);
+                        default -> profile.waypoints.set(true);
+                    }
+                }
+                profiles.add(profile);
+                added++;
+            }
+        } catch (IOException e) {
+            Client33.LOG.error("Could not discover profile folders.", e);
+        }
+        return added;
+    }
+
+    public String availableName(String requested) throws IOException {
+        if (!ProfileFiles.validName(requested)) throw new IOException("Invalid profile name.");
+        String candidate = requested;
+        for (int suffix = 2; get(candidate) != null || ProfileFiles.exists(FOLDER.toPath(), candidate); suffix++) {
+            candidate = requested + " " + suffix;
+        }
+        return candidate;
+    }
+
+    /** Apply an edited copy only after a successful filesystem rename. */
+    public void update(Profile original, Profile edited) throws IOException {
+        String name = edited.name.get();
+        Profile conflict = get(name);
+        if (conflict != null && conflict != original) throw new IOException("Profile name is already in use.");
+        ProfileFiles.rename(FOLDER.toPath(), original.name.get(), name);
+        original.fromTag(edited.toTag());
+        save();
     }
 }

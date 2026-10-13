@@ -18,12 +18,12 @@ public class BlockPosSetting extends Setting<BlockPos> {
 
     @Override
     protected BlockPos parseImpl(String str) {
-        List<String> values = List.of(str.split(","));
+        List<String> values = List.of(str.split(",", -1));
         if (values.size() != 3) return null;
 
         BlockPos bp = null;
         try {
-            bp = new BlockPos(Integer.parseInt(values.get(0)), Integer.parseInt(values.get(1)), Integer.parseInt(values.get(2)));
+            bp = new BlockPos(Integer.parseInt(values.get(0).strip()), Integer.parseInt(values.get(1).strip()), Integer.parseInt(values.get(2).strip()));
         } catch (NumberFormatException _) {
         }
         return bp;
@@ -45,7 +45,7 @@ public class BlockPosSetting extends Setting<BlockPos> {
     protected BlockPos load(CompoundTag tag) {
         if (tag.getIntArray("value").isPresent()) {
             int[] value = tag.getIntArray("value").get();
-            set(new BlockPos(value[0], value[1], value[2]));
+            if (value.length == 3) set(new BlockPos(value[0], value[1], value[2]));
         }
 
         return get();

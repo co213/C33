@@ -59,13 +59,12 @@ public class Fonts {
     }
 
     public static void load(FontFace fontFace) {
-        if (RENDERER != null) {
-            if (RENDERER.fontFace.equals(fontFace)) return;
-            else RENDERER.destroy();
-        }
+        if (RENDERER != null && RENDERER.fontFace.equals(fontFace)) return;
 
         try {
+            CustomTextRenderer previous = RENDERER;
             RENDERER = new CustomTextRenderer(fontFace);
+            if (previous != null) previous.destroy();
             Client33.EVENT_BUS.post(CustomFontChangedEvent.get());
         } catch (Exception e) {
             if (fontFace.equals(DEFAULT_FONT)) {

@@ -27,6 +27,7 @@ public class NbtUtils {
     public static <T> List<T> listFromTag(ListTag tag, ToValue<T> toItem) {
         List<T> list = new ArrayList<>(tag.size());
         for (Tag itemTag : tag) {
+            if (!(itemTag instanceof CompoundTag)) continue;
             T value = toItem.toValue(itemTag);
             if (value != null) list.add(value);
         }

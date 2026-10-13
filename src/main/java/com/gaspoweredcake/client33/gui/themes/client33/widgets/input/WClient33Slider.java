@@ -32,14 +32,14 @@ public class WClient33Slider extends WSlider implements Client33Widget {
         double x = this.x + handleSize / 2;
         double y = this.y + height / 2 - s / 2;
 
-        renderer.quad(x, y, valueWidth, s, theme.sliderLeft.get());
-        renderer.quad(x + valueWidth, y, width - valueWidth - handleSize, s, theme.sliderRight.get());
+        renderer.roundedQuad(x, y, valueWidth, s, s / 2, theme.sliderLeft.get());
+        renderer.roundedQuad(x + valueWidth, y, width - valueWidth - handleSize, s, s / 2, theme.sliderRight.get());
     }
 
     private void renderHandle(GuiRenderer renderer, double valueWidth) {
         Client33GuiTheme theme = theme();
         double s = handleSize();
 
-        renderer.quad(x + valueWidth, y, s, s, theme.sliderHandle.get(dragging, handleMouseOver));
+        renderer.roundedQuad(x + valueWidth, y, s, s, s / 2, theme.sliderHandle.get(dragging, handleMouseOver));
     }
 }

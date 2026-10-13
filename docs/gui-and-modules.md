@@ -140,3 +140,80 @@ Observations stay in memory for this world session, are limited to 256 container
 Hide Opened now requires an actual unexpired observed inventory; merely attempting to interact with a blocked container no longer hides it.
 
 InventoryTweaks sorting now plans using copied item components, so custom names, enchantments and other stack metadata are preserved in the plan. Each move checks the same screen/menu and expected source/destination contents; manual changes cancel remaining stale moves. Equal-count tools of the same type place the less-damaged tool first. When Disable in Creative is off, the creative player-inventory tab uses Minecraft's creative click handler and validates the wrapped slots. Item-catalog tabs are not sortable storage; changing tabs cancels an existing plan.
+
+## Profile management and recovery
+
+Use **Profiles → Refresh** or `.profiles refresh` (with your configured command prefix) to discover copied profile folders. Discovery also runs at startup when the profile index is missing. It reads the saved files without replacing them with current settings.
+
+Imports choose an unused name, adding a number when needed, and publish the folder only after all settings files have been written. Existing profiles are preserved. Export includes only the selected components; selecting waypoints does not include unchecked HUD, macros or modules. Recovery backup files and symbolic links are excluded.
+
+Editing uses a temporary copy until Save. Renaming moves the existing saved folder; cancelling discards edits. Names must contain letters, numbers, spaces, underscores or hyphens, with no leading/trailing spaces or reserved device names. Conflicting names are rejected. Filesystem operations across an entire profile/index are not a single transaction; recovered folders can be rediscovered with Refresh if an index save fails.
+
+## Freecam travel and continuous storage search
+
+- Install a compatible **Baritone for Minecraft 26.2** beside Client33. Navigation reports an actionable error when no supported backend is installed.
+- In **Freecam → Pathing**, enable **click-to-path**. Middle-click a viewed block (up to 256 blocks from the camera) to save a waypoint. Aim at a visible waypoint in the current dimension and left-click to travel there; blocks/entities can also be selected. Freecam exits so pathfinder movement can control the player. The optional double-click setting still applies.
+- **Allow mining** controls whether the route can break obstacles. The prior backend setting is restored when the route ends, is cancelled, or the world changes. Reachable targets are approached within three blocks; this is not a teleport. Thirty seconds without moving ends a stuck route.
+- **Waypoints** now provides **Walk to**, **Mine to**, and **Stop navigation**. Commands: `.waypoint goto <name>`, `.waypoint mine-to <name>`, `.waypoint stop`, and `.waypoint status`.
+- **Base Finder** scans loaded block entities while walking an expanding square search. Configure double chests (one pair counts once), dispensers/droppers, other storage, cluster radius, and minimum containers. Set the minimum to **1** to stop at a single double chest or dispenser. Defaults require two containers to reduce incidental hits. On discovery it saves a **Storage candidate** waypoint, approaches it, and stops. A container is evidence of storage, not proof of a player base.
+- Disable Base Finder to stop. A replacement/cancelled route, death, world change, enabling Freecam, eight consecutive stuck routes, or reaching the world border also stops it. Failed exploration legs advance to the next grid point. Mining is optional; pathfinding still depends on terrain, equipment, hunger, and server behavior. Exploration loads new terrain normally; it cannot inspect chunks the server has not sent.
+
+## Logout locations
+
+**Logout Spots** compares player identities every tick, including simultaneous joins/leaves with the same player count. It records immutable positions only for players seen within the previous two seconds; walking out of render distance alone is not a logout. Spots expire, have a configurable count limit, disappear on rejoin, and reset on world/session changes. Labels optionally include age, distance, and coordinates. The module screen can save a waypoint, walk to a spot, clear memory, or stop navigation. Flat boxes now cover the player's footprint.
+
+## Containers behind walls and storage memory
+
+- Enable **Ghost Hand** and right-click toward a nearby chest, barrel, or other menu-bearing container. A cyan outline previews the selected target behind intervening blocks. Interaction remains limited by the real player's reach and the server's checks. Sneaking preserves normal interactions.
+- **Ghost Hand → Mode → Probe** previews one **unconfirmed** target in amber. Adjust **probe-depth** to the desired block behind the visible wall, then right-click with an empty main hand (select an empty hotbar slot). This sends one ordinary interaction attempt, with a 250 ms cooldown; it does not assume the target is a chest or automatically mark it as confirmed. It can reach a server-side container whose client block appearance differs, when that server accepts the interaction. Plugins may reject it.
+- Freecam's existing container interaction obeys the real player's reach; Ghost Hand's explicit Probe mode also works from a nearby Freecam view. Moving the camera does not move the player or extend server reach.
+- **Storage ESP → Use maximum loaded range** removes distance fading and raises the render budget to 4096. Fresh settings show all received storage by default; existing saved preferences are preserved. Label range can be zero for no distance limit. Dense areas remain subject to rendering and label budgets.
+- Newly received chunks and changed blocks refresh discovery. **Remember locations** retains bounded session history when a known container is unloaded, removed, or disguised. Amber outlines and **LAST SEEN** labels are unconfirmed history, with separate expiry; they never inherit a live inventory snapshot. Clear Rendering Cache clears both live and remembered data.
+- A client cannot identify never-revealed chests that the server sends as stone, recover withheld container contents, force distant chunks to load, or guarantee passage through a solid wall. This feature implements reachable wall interaction and honest observation memory; it does not claim a universal anti-obfuscation or pearl-phasing bypass.
+
+## Auto Farm
+
+Open **World → Auto Farm**, or run `.settings auto-farm`. Enable it next to an existing farm with supplies in the hotbar or offhand.
+
+- **Cycle** harvests mature wheat, carrots, potatoes, beetroot and nether wart, then replants the original crop. It requires the matching planting item before harvesting. Empty soil uses **Plant Empty With**.
+- **Harvest** only breaks mature crops. **Plant** fills clear farmland (or soul sand for nether wart). **Bonemeal** grows supported immature crops; nether wart is excluded. **Hoe** prepares clear dirt, grass and dirt paths with a usable hoe.
+- **Prepare Soil** and **Use Bonemeal** are optional additions to Cycle, both off by default. Hoes with one durability point remaining are protected.
+- **Radius Blocks** is measured from the eyes and capped by player block reach. **Timing** contains separate harvest/use delays in milliseconds. **Advanced** offers Silent / Visible / None rotation and line-of-sight checking, enabled by default.
+- Menus and manual attack/use pause automation. The module HUD shows its current action or missing supplies. Switching mode, disabling or leaving a world cancels pending work.
+
+The module operates nearby; it does not walk, refill from inventory/chests, manage water/light, farm stems/trees/sugar cane, or bypass server reach/protection. Each unchanged target has a 350 ms retry interval and a five-second backoff after three attempts. Replant memory is bounded to 256 locations for five minutes and resets with the module; this also preserves crop identity across server placement rollbacks. Server rules can still reject interactions.
+
+At small window sizes, Operation and Cycle Options show the common controls first. Timing and Advanced start collapsed, and irrelevant settings disappear when the mode changes. Hover a setting for its explanation.
+
+## Speed Mine
+
+Open **Player → Speed Mine** or `.settings speed-mine`.
+
+- **Damage** finishes through the normal mining update once accumulated progress reaches **Finish Threshold** (default 0.7). **Instamine** uses the same threshold for one-click completion. Set the threshold closer to 1.0 for less early completion.
+- **Normal** multiplies progress for the block actually being mined, including targets chosen by other modules. Boosting a normally non-instant block is capped below instant progress so Minecraft still sends its normal completion packet.
+- **Haste** provides a mining bonus equivalent to **Haste Amplifier** (1 = Haste I). It supplements weaker Haste/Conduit Power rather than stacking the full bonus again. It does not add, overwrite or remove potion effects, or change attack speed.
+- **Blocks / Blocks Filter** control Damage and Normal modes. An empty Blacklist permits all blocks. Haste applies to all blocks.
+- Instamine respects **Break Delay → No Insta Break**, cancelled mining actions, and vanilla adventure restrictions. Highway Builder uses the same instant-mining eligibility check.
+- **Grim Bypass** is a legacy extra-abort option, disabled by default. It sends one extra abort after Speed Mine's accelerated completion packet; it has no verified guarantee on current Grim versions.
+
+Mining acceptance is controlled by the server. High multipliers and early completion can be rejected. Naturally instant crops remain instant, and unbreakable blocks stay unbreakable.
+
+## Baritone task dashboard
+
+Open the **Baritone** tab or `.settings baritone`. Install the compatible optional Baritone 26.2 backend to enable task controls; the tab explains installation when it is absent.
+
+- Select **Go To**, **Mine**, **Follow**, **Explore**, **Farm**, **Tunnel**, **Build**, or **Command**. Only relevant inputs appear. **Use my position** fills coordinate fields from the player, including the schematic origin.
+- **Start task** submits the form. Structured tasks replace the existing task after input validation. **Pause**, **Resume**, and **Stop** provide immediate controls, with live status. Client navigation routes preserve their timeout while paused.
+- **Movement** contains readable shortcuts for breaking, placing, sprinting, parkour, and inventory use. These modify the same backend settings as Advanced Settings.
+- **Command library** searches the installed backend's actual command names/descriptions. Hover a command for syntax, then select it to fill the custom command field. Edit arguments before pressing Start. Custom commands accept the configured prefix or `#`; informational commands do not automatically cancel a route.
+- **Advanced settings** keeps the remaining backend controls searchable and separate from task inputs. Long backend labels wrap to fit smaller windows. Settings save when the screen closes.
+
+Mine's quantity is the item count to collect; zero runs indefinitely. Farm radius zero is unrestricted. Tunnel fields are height, width, and length in that order. Put build files in the Minecraft game directory's `schematics/` folder; use a simple filename. Supported schematic formats and command availability depend on your installed backend. Submitted commands can still report errors in Baritone chat (for example missing files or unreachable goals).
+
+Menus now use rounded panels, headers, buttons, inputs, dropdowns, tooltips, module highlights, scrollbar handles, and slider handles. Clear grouping and text status keep task feedback understandable without relying only on color. This applies to Client33's GUI; Minecraft's own screens retain their native styling.
+
+**Players and logout spots** in the Baritone dashboard lists loaded players and recorded logouts in the current dimension. Refresh the list, then choose **Walk to**, **Mine to**, or **Follow** for a loaded player. Walking/mining targets a position captured at click time; Follow uses Baritone's follow process. Logout entries show their age and offer Walk/Mine to that historical spot. Enable **Logout Spots** while nearby players are present to collect records. Entries expire and clear across worlds; clicking a stale record asks you to refresh. The Logout Spots module also offers Mine to alongside its waypoint and walk controls.
+
+Other online players may appear in the server player list without coordinates. The dashboard reports this count instead of inventing positions. The client cannot locate never-observed players, track offline players' current positions, or retrieve server-withheld positions.
+
+**Saved waypoints** in Baritone offers search, refresh, Walk to and Mine to. It includes compatible dimensions and uses existing Overworld/Nether waypoint scaling when enabled on a waypoint. Each action checks that the waypoint still exists and that the world/dimension is compatible before starting.

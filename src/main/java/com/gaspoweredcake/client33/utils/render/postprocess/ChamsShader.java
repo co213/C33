@@ -5,10 +5,8 @@
 
 package com.gaspoweredcake.client33.utils.render.postprocess;
 
-import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.buffers.Std140SizeCalculator;
-import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.gaspoweredcake.client33.Client33;
 import com.gaspoweredcake.client33.events.game.ResourcePacksReloadedEvent;
@@ -24,12 +22,9 @@ import net.minecraft.client.renderer.DynamicUniformStorage;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.world.entity.Entity;
 import org.jspecify.annotations.NonNull;
-import org.lwjgl.stb.STBImage;
-import org.lwjgl.system.MemoryStack;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
 import java.util.Optional;
 
 import static com.gaspoweredcake.client33.Client33.mc;
@@ -48,33 +43,16 @@ public class ChamsShader extends EntityShader {
     @PostInit
     public static void load() {
         try {
-            ByteBuffer data = null;
             for (String fileFormat : FILE_FORMATS) {
-                Optional<Resource> optional = mc.getResourceManager().getResource(Client33.identifier("textures/chams." + fileFormat));
-                if (optional.isEmpty() || optional.get().open() == null) {
-                    continue;
+                Optional<Resource> resource = mc.getResourceManager().getResource(Client33.identifier("textures/chams." + fileFormat));
+                if (resource.isEmpty()) continue;
+                try (var in = resource.get().open()) {
+                    Texture replacement = Texture.read(in, true, FilterMode.NEAREST);
+                    Texture previous = IMAGE_TEX;
+                    IMAGE_TEX = replacement;
+                    if (previous != null) previous.close();
                 }
-
-                data = TextureUtil.readResource(optional.get().open());
-                break;
-            }
-            if (data == null) return;
-
-            data.rewind();
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                IntBuffer width = stack.mallocInt(1);
-                IntBuffer height = stack.mallocInt(1);
-                IntBuffer comp = stack.mallocInt(1);
-
-                STBImage.stbi_set_flip_vertically_on_load(true);
-                ByteBuffer image = STBImage.stbi_load_from_memory(data, width, height, comp, 4);
-
-                IMAGE_TEX = new Texture(width.get(0), height.get(0), GpuFormat.RGBA8_UNORM, FilterMode.NEAREST, FilterMode.NEAREST);
-                IMAGE_TEX.upload(image);
-
-                STBImage.stbi_image_free(image);
-                STBImage.stbi_set_flip_vertically_on_load(false);
+                return;
             }
         } catch (IOException e) {
             Client33.LOG.error("Error loading the chams shader", e);

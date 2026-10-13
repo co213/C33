@@ -15,11 +15,18 @@ public final class ModuleLogicRegression {
         check(!cursor.hasNext() && !cursor.hasNext(), "Exhaustion remains stable");
         try { cursor.next(); throw new AssertionError("Exhausted next must throw"); }
         catch (java.util.NoSuchElementException expected) { }
+        InfrastructureRegression.run();
+        FarmRegression.run();
+        MiningRegression.run();
+        BaritoneTasksRegression.run();
+        NavigationRegression.run();
+        SettingsRegression.run();
         StorageRegression.run();
         BlockScanRegression.run();
         LifecycleRegression.run();
         HttpRegression.run();
         PersistenceRegression.run();
+        ProfileFilesRegression.run();
         ReconCombatRegression.run();
         TickTimer timer = new TickTimer();
         check(timer.ready(), "A newly enabled action must be ready");

@@ -16,6 +16,6 @@ public class WClient33Quad extends WQuad {
 
     @Override
     protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
-        renderer.quad(x, y, width, height, color);
+        renderer.roundedQuad(x, y, width, height, theme.scale(4), color);
     }
 }

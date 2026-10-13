@@ -262,7 +262,7 @@ publishing {
 
 // Pure module math can be checked without launching a Minecraft client.
 val regression = sourceSets.create("regression") {
-    compileClasspath += sourceSets.main.get().output
+    compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
     runtimeClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
 }
 val moduleLogicRegression = tasks.register<JavaExec>("moduleLogicRegression") {

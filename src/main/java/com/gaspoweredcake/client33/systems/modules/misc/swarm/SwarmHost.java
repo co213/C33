@@ -5,7 +5,6 @@
 
 package com.gaspoweredcake.client33.systems.modules.misc.swarm;
 
-import com.gaspoweredcake.client33.utils.network.Client33Executor;
 import com.gaspoweredcake.client33.utils.player.ChatUtils;
 
 import java.io.IOException;
@@ -25,6 +24,7 @@ public class SwarmHost extends Thread {
             e.printStackTrace();
         }
 
+        setDaemon(true);
         if (socket != null) start();
     }
 
@@ -37,22 +37,29 @@ public class SwarmHost extends Thread {
                 Socket connection = socket.accept();
                 assignConnectionToSubServer(connection);
             } catch (IOException e) {
-                ChatUtils.errorPrefix("Swarm", "Error making a connection to worker.");
-                e.printStackTrace();
-            }
-        }
-    }
-
-    public void assignConnectionToSubServer(Socket connection) {
-        for (int i = 0; i < clientConnections.length; i++) {
-            if (this.clientConnections[i] == null) {
-                this.clientConnections[i] = new SwarmConnection(connection);
+                if (!isInterrupted() && !socket.isClosed()) ChatUtils.errorPrefix("Swarm", "Error accepting a worker connection.");
                 break;
             }
         }
     }
 
-    public void disconnect() {
+    public synchronized void assignConnectionToSubServer(Socket connection) {
+        if (isInterrupted() || socket == null || socket.isClosed()) {
+            try { connection.close(); } catch (IOException ignored) { }
+            return;
+        }
+        for (int i = 0; i < clientConnections.length; i++) {
+            if (clientConnections[i] == null || !clientConnections[i].isAlive() || clientConnections[i].socket.isClosed()) {
+                this.clientConnections[i] = new SwarmConnection(connection);
+                return;
+            }
+        }
+        try { connection.close(); } catch (IOException ignored) { }
+    }
+
+    public synchronized void disconnect() {
+        interrupt();
+        if (socket == null || socket.isClosed()) return;
         for (SwarmConnection connection : clientConnections) {
             if (connection != null) connection.disconnect();
         }
@@ -68,25 +75,23 @@ public class SwarmHost extends Thread {
         interrupt();
     }
 
-    public void sendMessage(String s) {
-        Client33Executor.execute(() -> {
-            for (SwarmConnection connection : clientConnections) {
-                if (connection != null) {
-                    connection.messageToSend = s;
-                }
+    public synchronized void sendMessage(String message) {
+        for (SwarmConnection connection : clientConnections) {
+            if (connection != null && connection.isAlive() && !connection.sendMessage(message)) {
+                ChatUtils.warningPrefix("Swarm", "Worker queue is full or disconnected; command was not sent.");
             }
-        });
+        }
     }
 
-    public SwarmConnection[] getConnections() {
-        return clientConnections;
+    public synchronized SwarmConnection[] getConnections() {
+        return clientConnections.clone();
     }
 
-    public int getConnectionCount() {
+    public synchronized int getConnectionCount() {
         int count = 0;
 
         for (SwarmConnection clientConnection : clientConnections) {
-            if (clientConnection != null) count++;
+            if (clientConnection != null && clientConnection.isAlive() && !clientConnection.socket.isClosed()) count++;
         }
 
         return count;

@@ -82,8 +82,8 @@ public class Proxy implements ISerializable<Proxy> {
         .build()
     );
 
-    public Status status = Status.UNCHECKED;
-    public long latency;
+    public volatile Status status = Status.UNCHECKED;
+    public volatile long latency;
 
     // todo
     //  - add more rigorous status checks - perhaps querying the proxy provider's status endpoint
@@ -144,7 +144,7 @@ public class Proxy implements ISerializable<Proxy> {
 
     private boolean isSocks4() throws IOException {
         ByteBuffer bb;
-        byte[] u = username.get().getBytes();
+        byte[] u = username.get().getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
         // SOCKS4
         if (InetAddresses.isInetAddress(address.get())) {
@@ -159,7 +159,7 @@ public class Proxy implements ISerializable<Proxy> {
 
         // SOCKS4a
         else {
-            byte[] addr = address.get().getBytes();
+            byte[] addr = address.get().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             bb = ByteBuffer.allocate(10 + u.length + addr.length)
                 .put((byte) 4)
                 .put((byte) 1)
@@ -192,8 +192,9 @@ public class Proxy implements ISerializable<Proxy> {
 
     private byte[] sendData(byte[] data, int read) throws IOException {
         try (Socket s = new Socket()) {
-            s.setSoTimeout(Proxies.get().timeout.get());
-            s.connect(new InetSocketAddress(address.get(), port.get()), Proxies.get().timeout.get());
+            int timeout = Math.max(1, Proxies.get().timeout.get());
+            s.setSoTimeout(timeout);
+            s.connect(new InetSocketAddress(address.get(), port.get()), timeout);
             OutputStream out = s.getOutputStream();
 
             out.write(data);

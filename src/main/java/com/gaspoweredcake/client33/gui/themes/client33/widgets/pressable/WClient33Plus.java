@@ -18,7 +18,7 @@ public class WClient33Plus extends WPlus implements Client33Widget {
         double s = theme.scale(3);
 
         renderBackground(renderer, this, pressed, mouseOver);
-        renderer.quad(x + pad, y + height / 2 - s / 2, width - pad * 2, s, theme.plusColor.get());
-        renderer.quad(x + width / 2 - s / 2, y + pad, s, height - pad * 2, theme.plusColor.get());
+        renderer.roundedQuad(x + pad, y + height / 2 - s / 2, width - pad * 2, s, s / 2, theme.plusColor.get());
+        renderer.roundedQuad(x + width / 2 - s / 2, y + pad, s, height - pad * 2, s / 2, theme.plusColor.get());
     }
 }

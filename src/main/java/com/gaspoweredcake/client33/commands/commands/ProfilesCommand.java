@@ -20,6 +20,13 @@ public class ProfilesCommand extends Command {
 
     @Override
     public void build(LiteralArgumentBuilder<ClientSuggestionProvider> builder) {
+        builder.then(literal("refresh").executes(context -> {
+            int added = Profiles.get().refresh();
+            Profiles.get().save();
+            info("Discovered %d saved profile(s).", added);
+            return SINGLE_SUCCESS;
+        }));
+
         builder.then(literal("load").then(argument("profile", ProfileArgumentType.create()).executes(context -> {
             Profile profile = ProfileArgumentType.get(context);
 

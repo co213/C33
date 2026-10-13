@@ -34,7 +34,9 @@ public class NBSSongDecoder extends SongDecoder {
     @Override
     @NonNull
     public Song parse(File songFile) throws Exception {
-        return parse(new FileInputStream(songFile));
+        try (InputStream in = new BufferedInputStream(new FileInputStream(songFile))) {
+            return parse(in);
+        }
     }
 
     /**
@@ -49,7 +51,7 @@ public class NBSSongDecoder extends SongDecoder {
         Multimap<Integer, Note> notesMap = MultimapBuilder.linkedHashKeys().arrayListValues().build();
 
         DataInputStream dataInputStream = new DataInputStream(inputStream);
-        short length = readShort(dataInputStream);
+        int length = readShort(dataInputStream);
         int nbsversion = 0;
         if (length == 0) {
             nbsversion = dataInputStream.readByte();
@@ -64,6 +66,7 @@ public class NBSSongDecoder extends SongDecoder {
         readString(dataInputStream); // original author
         readString(dataInputStream); // description
         float speed = readShort(dataInputStream) / 100f;
+        if (speed <= 0) throw new IOException("Song tempo must be positive.");
         dataInputStream.readBoolean(); // auto-save
         dataInputStream.readByte(); // auto-save duration
         dataInputStream.readByte(); // x/4ths, time signature
@@ -79,15 +82,17 @@ public class NBSSongDecoder extends SongDecoder {
             readShort(dataInputStream); // loop start tick
         }
 
-        double tick = -1;
+        int sourceTick = -1;
         while (true) {
-            short jumpTicks = readShort(dataInputStream); // jumps till next tick
+            int jumpTicks = readShort(dataInputStream); // jumps till next tick
             if (jumpTicks == 0) {
                 break;
             }
-            tick += jumpTicks * (20f / speed);
+            sourceTick = Math.addExact(sourceTick, jumpTicks);
+            double tick = sourceTick * (20.0 / speed);
+            if (tick > Integer.MAX_VALUE) throw new IOException("Song duration exceeds supported ticks.");
             while (true) {
-                short jumpLayers = readShort(dataInputStream); // jumps till next layer
+                int jumpLayers = readShort(dataInputStream); // jumps till next layer
                 if (jumpLayers == 0) {
                     break;
                 }
@@ -120,10 +125,10 @@ public class NBSSongDecoder extends SongDecoder {
         notesMap.put(ticks, note);
     }
 
-    private static short readShort(DataInputStream dataInputStream) throws IOException {
+    private static int readShort(DataInputStream dataInputStream) throws IOException {
         int byte1 = dataInputStream.readUnsignedByte();
         int byte2 = dataInputStream.readUnsignedByte();
-        return (short) (byte1 + (byte2 << 8));
+        return byte1 + (byte2 << 8);
     }
 
     private static int readInt(DataInputStream dataInputStream) throws IOException {
@@ -145,7 +150,7 @@ public class NBSSongDecoder extends SongDecoder {
 
         StringBuilder builder = new StringBuilder(length);
         for (; length > 0; --length) {
-            char c = (char) dataInputStream.readByte();
+            char c = (char) dataInputStream.readUnsignedByte();
             if (c == (char) 0x0D) {
                 c = ' ';
             }

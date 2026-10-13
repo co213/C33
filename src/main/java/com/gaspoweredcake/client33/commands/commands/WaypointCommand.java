@@ -12,6 +12,7 @@ import com.gaspoweredcake.client33.commands.Command;
 import com.gaspoweredcake.client33.commands.arguments.BlockPosArgumentType;
 import com.gaspoweredcake.client33.commands.arguments.WaypointArgumentType;
 import com.gaspoweredcake.client33.systems.waypoints.Waypoint;
+import com.gaspoweredcake.client33.pathing.Navigation;
 import com.gaspoweredcake.client33.systems.waypoints.Waypoints;
 import com.gaspoweredcake.client33.utils.player.PlayerUtils;
 import net.minecraft.ChatFormatting;
@@ -25,6 +26,17 @@ public class WaypointCommand extends Command {
 
     @Override
     public void build(LiteralArgumentBuilder<ClientSuggestionProvider> builder) {
+        builder.then(literal("stop").executes(_ -> { Navigation.stop(); info("Navigation stopped."); return SINGLE_SUCCESS; }));
+        builder.then(literal("status").executes(_ -> { info(Navigation.status()); return SINGLE_SUCCESS; }));
+        for (boolean mine : new boolean[] { false, true }) {
+            builder.then(literal(mine ? "mine-to" : "goto").then(argument("waypoint", WaypointArgumentType.create()).executes(context -> {
+                Waypoint waypoint = WaypointArgumentType.get(context);
+                if (!Waypoints.checkDimension(waypoint)) { error("Waypoint is in a different dimension."); return 0; }
+                try { Navigation.start(waypoint.getPos(), false, mine); }
+                catch (IllegalStateException | IllegalArgumentException failure) { error(failure.getMessage()); return 0; }
+                return SINGLE_SUCCESS;
+            })));
+        }
         builder.then(literal("list").executes(_ -> {
             if (Waypoints.get().isEmpty()) error("No created waypoints.");
             else {

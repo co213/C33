@@ -732,7 +732,10 @@ public class Notebot extends Module {
 
         stage = Stage.LoadingSong;
         long time1 = System.currentTimeMillis();
-        loadingSongFuture.whenComplete((song, ex) -> {
+        CompletableFuture<Song> pending = loadingSongFuture;
+        var loadingWorld = mc.level;
+        pending.whenComplete((song, ex) -> mc.execute(() -> {
+            if (loadingSongFuture != pending || mc.level != loadingWorld || stage != Stage.LoadingSong) return;
             if (ex == null) {
                 // Song is null only when it times out
                 if (song == null) {
@@ -756,7 +759,7 @@ public class Notebot extends Module {
                     onSongEnd();
                 }
             }
-        });
+        }));
         return true;
     }
 

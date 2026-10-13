@@ -6,6 +6,8 @@
 package com.gaspoweredcake.client33.systems.proxies;
 
 import com.gaspoweredcake.client33.settings.*;
+import com.gaspoweredcake.client33.Client33;
+import com.gaspoweredcake.client33.utils.network.CheckBatch;
 import com.gaspoweredcake.client33.systems.System;
 import com.gaspoweredcake.client33.systems.Systems;
 import com.gaspoweredcake.client33.utils.misc.NbtUtils;
@@ -14,7 +16,6 @@ import net.minecraft.nbt.CompoundTag;
 import org.jspecify.annotations.NonNull;
 
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.regex.Pattern;
 
 public class Proxies extends System<Proxies> implements Iterable<Proxy> {
@@ -26,8 +27,8 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
         .name("threads")
         .description("The number of concurrent threads to check proxies with.")
         .defaultValue(8)
-        .min(0)
-        .sliderRange(0, 32)
+        .range(1, 32)
+        .sliderRange(1, 32)
         .build()
     );
 
@@ -35,8 +36,8 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
         .name("timeout")
         .description("The timeout in milliseconds for checking proxies.")
         .defaultValue(5000)
-        .min(0)
-        .sliderRange(0, 15000)
+        .range(1, 60000)
+        .sliderRange(1, 15000)
         .build()
     );
 
@@ -44,7 +45,7 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
         .name("retries-on-timeout")
         .description("How many additional times to check a proxy if the check times out.")
         .defaultValue(1)
-        .min(0)
+        .range(0, 5)
         .sliderRange(0, 5)
         .build()
     );
@@ -76,6 +77,7 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
         .name("prune-to-count")
         .description("If in excess, prune the number of proxies to this count. 0 to disable. Prioritises by latency.")
         .defaultValue(0)
+        .min(0)
         .sliderRange(0, 25)
         .build()
     );
@@ -88,7 +90,7 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
     public static final Pattern PROXY_PATTERN_URI = Pattern.compile("^(?:(socks|socks4|socks5)://)?(?:(?<user>[\\w~-]+)(:(?<pass>[\\w~-]+))?@)?(?<addr>(?:0*(?:\\d|[1-9]\\d|1\\d\\d|2[0-4]\\d|25[0-5])(?:\\.(?!:)|)){4}):(?!0)(?<port>\\d{1,4}|[1-5]\\d{4}|6[0-4]\\d{3}|65[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$", Pattern.MULTILINE);
 
     private List<Proxy> proxies = new ArrayList<>();
-    public boolean refreshing;
+    public volatile boolean refreshing;
 
     public Proxies() {
         super("proxies");
@@ -137,46 +139,26 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
 
     public void checkProxies(boolean all) {
         if (refreshing || isEmpty()) return;
+        List<Proxy> snapshot = proxies.stream().filter(proxy -> all || proxy.status == Proxy.Status.UNCHECKED).toList();
+        if (snapshot.isEmpty()) return;
+        int workers = threads.get();
+        int retries = tries.get();
         refreshing = true;
-
-        Client33Executor.execute(() -> {
-            BlockingQueue<Proxy> toCheck = new ArrayBlockingQueue<>(proxies.size());
-            proxies.forEach(proxy -> {
-                if (all || proxy.status == Proxy.Status.UNCHECKED) toCheck.add(proxy);
-            });
-
-            ConcurrentHashMap<Proxy, Integer> checked = new ConcurrentHashMap<>(proxies.size(), 1);
-            proxies.forEach(proxy -> checked.put(proxy, 0));
-
-            try (ExecutorService executor = Executors.newFixedThreadPool(threads.get())) {
-                for (int i = 0; i < threads.get(); i++) {
-                    executor.execute(() -> {
-                        try {
-                            check(toCheck, checked);
-                        } catch (InterruptedException _) {
-                        }
-                    });
-                }
-
+        try {
+            Client33Executor.execute(() -> {
                 try {
-                    executor.shutdown();
-                    //noinspection ResultOfMethodCallIgnored
-                    executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-                } catch (InterruptedException _) {
+                    CheckBatch.run(snapshot, workers, retries, proxy -> proxy.checkStatus() == 3);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (RuntimeException e) {
+                    Client33.LOG.error("Could not finish checking proxies.", e);
+                } finally {
+                    refreshing = false;
                 }
-
-                refreshing = false;
-            }
-        });
-    }
-
-    private void check(BlockingQueue<Proxy> queue, ConcurrentHashMap<Proxy, Integer> checks) throws InterruptedException {
-        while (!queue.isEmpty()) {
-            Proxy proxy = queue.take();
-            if (proxy.checkStatus() == 3 && checks.get(proxy) <= tries.get()) {
-                checks.put(proxy, checks.get(proxy) + 1);
-                queue.put(proxy);
-            }
+            });
+        } catch (RuntimeException e) {
+            refreshing = false;
+            throw e;
         }
     }
 
@@ -191,9 +173,11 @@ public class Proxies extends System<Proxies> implements Iterable<Proxy> {
         List<Proxy> p = (sort.get() ? proxies : new ArrayList<>(proxies));
         p.sort(Comparator.comparingLong(proxy -> proxy.status == Proxy.Status.ALIVE ? proxy.latency : Long.MAX_VALUE));
 
-        if (pruneExcess.get() == 0 || pruneExcess.get() >= p.size()) return;
-        p.subList(pruneExcess.get(), p.size()).clear();
-        if (!sort.get()) proxies.removeIf(proxy -> !p.contains(proxy));
+        if (pruneExcess.get() > 0 && pruneExcess.get() < p.size()) {
+            p.subList(pruneExcess.get(), p.size()).clear();
+            if (!sort.get()) proxies.removeIf(proxy -> !p.contains(proxy));
+        }
+        save();
     }
 
     public boolean isEmpty() {

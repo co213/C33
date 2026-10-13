@@ -28,13 +28,14 @@ public class FixedUniformStorage<T extends DynamicUniformStorage.DynamicUniform>
     private int size;
 
     public FixedUniformStorage(String name, int blockSize, int capacity) {
+        if (blockSize <= 0 || capacity <= 0) throw new IllegalArgumentException("Uniform block size and capacity must be positive.");
         GpuDevice gpuDevice = RenderSystem.getDevice();
         int uniformAlignment = gpuDevice.getDeviceInfo().limits().minUniformOffsetAlignment();
         this.blockSize = Mth.roundToward(blockSize, uniformAlignment);
         this.capacity = capacity;
         int alignedCapacity = Mth.smallestEncompassingPowerOfTwo(capacity);
         this.size = 0;
-        this.buffer = new MappableRingBuffer(() -> name + " x" + this.blockSize, 130, this.blockSize * alignedCapacity);
+        this.buffer = new MappableRingBuffer(() -> name + " x" + this.blockSize, 130, Math.multiplyExact(this.blockSize, alignedCapacity));
     }
 
     public GpuBufferSlice write(T value) {
@@ -56,13 +57,13 @@ public class FixedUniformStorage<T extends DynamicUniformStorage.DynamicUniform>
     public GpuBufferSlice[] writeAll(T[] values) {
         if (values.length == 0) {
             return new GpuBufferSlice[0];
-        } else if (this.size + values.length > this.capacity) {
+        } else if (values.length > this.capacity - this.size) {
             throw new IndexOutOfBoundsException(String.format("Index %s out of bounds for length %s", this.size + values.length - 1, this.capacity));
         } else {
             int i = this.size * this.blockSize;
             GpuBufferSlice[] gpuBufferSlices = new GpuBufferSlice[values.length];
             GpuBuffer ubo = this.buffer.currentBuffer();
-            GpuBufferSlice slice = ubo.slice(i, values.length * this.blockSize);
+            GpuBufferSlice slice = ubo.slice(i, (long) values.length * this.blockSize);
 
             try (GpuBufferSlice.MappedView mappedView = slice.map(false, true)) {
                 ByteBuffer byteBuffer = mappedView.data();

@@ -29,15 +29,15 @@ public class SongDecoders {
     }
 
     public static void registerDecoder(String extension, SongDecoder songDecoder) {
-        decoders.put(extension, songDecoder);
+        decoders.put(extension.toLowerCase(java.util.Locale.ROOT), songDecoder);
     }
 
     public static SongDecoder getDecoder(File file) {
-        return decoders.get(FilenameUtils.getExtension(file.getName()));
+        return decoders.get(FilenameUtils.getExtension(file.getName()).toLowerCase(java.util.Locale.ROOT));
     }
 
     public static boolean hasDecoder(File file) {
-        return decoders.containsKey(FilenameUtils.getExtension(file.getName()));
+        return decoders.containsKey(FilenameUtils.getExtension(file.getName()).toLowerCase(java.util.Locale.ROOT));
     }
 
     public static boolean hasDecoder(Path path) {
@@ -58,6 +58,7 @@ public class SongDecoders {
 
         fixSong(song);
 
+        if (song.getNotesMap().isEmpty()) throw new IllegalArgumentException("Song contains no playable notes.");
         song.finishLoading();
 
         return song;

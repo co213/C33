@@ -13,7 +13,6 @@ import com.gaspoweredcake.client33.systems.accounts.types.SessionAccount;
 import com.gaspoweredcake.client33.systems.accounts.types.TheAlteningAccount;
 import com.gaspoweredcake.client33.utils.misc.NbtException;
 import com.gaspoweredcake.client33.utils.misc.NbtUtils;
-import com.gaspoweredcake.client33.utils.network.Client33Executor;
 import net.minecraft.nbt.CompoundTag;
 import org.jspecify.annotations.NonNull;
 
@@ -67,23 +66,22 @@ public class Accounts extends System<Accounts> implements Iterable<Account<?>> {
 
     @Override
     public Accounts fromTag(CompoundTag tag) {
-        Client33Executor.execute(() -> accounts = NbtUtils.listFromTag(tag.getListOrEmpty("accounts"), tag1 -> {
+        accounts = NbtUtils.listFromTag(tag.getListOrEmpty("accounts"), tag1 -> {
             CompoundTag t = (CompoundTag) tag1;
             if (!t.contains("type")) return null;
 
-            AccountType type = AccountType.valueOf(t.getStringOr("type", ""));
-
             try {
+                AccountType type = AccountType.valueOf(t.getStringOr("type", ""));
                 return switch (type) {
                     case Cracked -> new CrackedAccount(null).fromTag(t);
                     case Microsoft -> new MicrosoftAccount(null).fromTag(t);
                     case TheAltening -> new TheAlteningAccount(null).fromTag(t);
                     case Session -> new SessionAccount(null).fromTag(t);
                 };
-            } catch (NbtException _) {
+            } catch (NbtException | IllegalArgumentException _) {
                 return null;
             }
-        }));
+        });
 
         return this;
     }

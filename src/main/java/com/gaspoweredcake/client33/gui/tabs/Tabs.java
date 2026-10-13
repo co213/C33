@@ -30,9 +30,7 @@ public class Tabs {
         add(new MacrosTab());
         add(new ProfilesTab());
 
-        if (PathManagers.get().getSettings().get().sizeGroups() > 0) {
-            add(new PathManagerTab());
-        }
+        add(new PathManagerTab());
     }
 
     public static void add(Tab tab) {

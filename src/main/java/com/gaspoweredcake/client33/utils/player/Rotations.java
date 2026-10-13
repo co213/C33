@@ -11,7 +11,9 @@ import com.gaspoweredcake.client33.events.world.TickEvent;
 import com.gaspoweredcake.client33.systems.config.Config;
 import com.gaspoweredcake.client33.utils.PreInit;
 import com.gaspoweredcake.client33.utils.entity.Target;
-import com.gaspoweredcake.client33.utils.misc.Pool;
+import com.gaspoweredcake.client33.events.game.GameLeftEvent;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -25,8 +27,9 @@ import java.util.List;
 import static com.gaspoweredcake.client33.Client33.mc;
 
 public class Rotations {
-    private static final Pool<Rotation> rotationPool = new Pool<>(Rotation::new);
     private static final List<Rotation> rotations = new ArrayList<>();
+    private static List<Rotation> inFlight = List.of();
+    private static LocalPlayer prePlayer;
     public static float serverYaw;
     public static float serverPitch;
     public static int rotationTimer;
@@ -35,7 +38,6 @@ public class Rotations {
 
     private static Rotation lastRotation;
     private static int lastRotationTimer;
-    private static boolean sentLastRotation;
     public static boolean rotating = false;
 
     private Rotations() {
@@ -47,8 +49,9 @@ public class Rotations {
     }
 
     public static void rotate(double yaw, double pitch, int priority, boolean clientSide, Runnable callback) {
-        Rotation rotation = rotationPool.get();
-        rotation.set(yaw, pitch, priority, clientSide, callback);
+        if (mc.player == null || mc.level == null || !Double.isFinite(yaw) || !Double.isFinite(pitch)) return;
+        Rotation rotation = new Rotation();
+        rotation.set(Mth.wrapDegrees(yaw), Mth.clamp(pitch, -90, 90), priority, clientSide, callback);
 
         int i = 0;
         for (; i < rotations.size(); i++) {
@@ -76,8 +79,6 @@ public class Rotations {
 
     private static void resetLastRotation() {
         if (lastRotation != null) {
-            rotationPool.free(lastRotation);
-
             lastRotation = null;
             lastRotationTimer = 0;
         }
@@ -85,27 +86,24 @@ public class Rotations {
 
     @EventHandler
     private static void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
-        if (mc.getCameraEntity() != mc.player) return;
-        sentLastRotation = false;
+        resetPreRotation();
+        rotations.removeIf(rotation -> !rotation.valid());
+        inFlight = List.copyOf(rotations);
+        rotations.clear();
+        i = 0;
+        if (mc.player == null || mc.getCameraEntity() != mc.player) return;
 
-        if (!rotations.isEmpty()) {
+        if (!inFlight.isEmpty()) {
             rotating = true;
             resetLastRotation();
-
-            Rotation rotation = rotations.get(i);
-            setupMovementPacketRotation(rotation);
-
-            if (rotations.size() > 1) rotationPool.free(rotation);
-
-            i++;
+            setupMovementPacketRotation(inFlight.getFirst());
+            i = 1;
         } else if (lastRotation != null) {
-            if (lastRotationTimer >= Config.get().rotationHoldTicks.get()) {
+            if (!lastRotation.valid() || lastRotationTimer >= Config.get().rotationHoldTicks.get()) {
                 resetLastRotation();
                 rotating = false;
             } else {
                 setupMovementPacketRotation(lastRotation);
-                sentLastRotation = true;
-
                 lastRotationTimer++;
             }
         }
@@ -117,6 +115,7 @@ public class Rotations {
     }
 
     private static void setClientRotation(Rotation rotation) {
+        prePlayer = mc.player;
         preYaw = mc.player.getYRot();
         prePitch = mc.player.getXRot();
 
@@ -126,37 +125,43 @@ public class Rotations {
 
     @EventHandler
     private static void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
-        if (!rotations.isEmpty()) {
-            if (mc.getCameraEntity() == mc.player) {
-                rotations.get(i - 1).runCallback();
-
-                if (rotations.size() == 1) lastRotation = rotations.get(i - 1);
-
-                resetPreRotation();
+        List<Rotation> batch = inFlight;
+        inFlight = List.of();
+        try {
+            if (i == 1 && !batch.isEmpty()) {
+                Rotation first = batch.getFirst();
+                try { first.runCallback(); } finally { resetPreRotation(); }
+                if (first.valid()) lastRotation = first;
             }
-
-            for (; i < rotations.size(); i++) {
-                Rotation rotation = rotations.get(i);
-
+            for (; i < batch.size(); i++) {
+                Rotation rotation = batch.get(i);
+                if (!rotation.valid()) continue;
                 setCamRotation(rotation.yaw, rotation.pitch);
                 if (rotation.clientSide) setClientRotation(rotation);
-                rotation.sendPacket();
-                if (rotation.clientSide) resetPreRotation();
-
-                if (i == rotations.size() - 1) lastRotation = rotation;
-                else rotationPool.free(rotation);
+                try { rotation.sendPacket(); } finally { resetPreRotation(); }
+                if (rotation.valid()) lastRotation = rotation;
             }
-
-            rotations.clear();
-            i = 0;
-        } else if (sentLastRotation) {
+        } finally {
             resetPreRotation();
+            i = 0;
         }
     }
 
     private static void resetPreRotation() {
-        mc.player.setYRot(preYaw);
-        mc.player.setXRot(prePitch);
+        if (prePlayer == null) return;
+        prePlayer.setYRot(preYaw);
+        prePlayer.setXRot(prePitch);
+        prePlayer = null;
+    }
+
+    @EventHandler
+    private static void onGameLeft(GameLeftEvent event) {
+        resetPreRotation();
+        rotations.clear();
+        inFlight = List.of();
+        resetLastRotation();
+        i = 0;
+        rotating = false;
     }
 
     @EventHandler
@@ -227,6 +232,8 @@ public class Rotations {
         public int priority;
         public boolean clientSide;
         public Runnable callback;
+        private LocalPlayer player;
+        private ClientLevel world;
 
         public void set(double yaw, double pitch, int priority, boolean clientSide, Runnable callback) {
             this.yaw = yaw;
@@ -234,15 +241,29 @@ public class Rotations {
             this.priority = priority;
             this.clientSide = clientSide;
             this.callback = callback;
+            player = mc.player;
+            world = mc.level;
+        }
+
+        private boolean valid() {
+            return player != null && player == mc.player && world == mc.level;
         }
 
         public void sendPacket() {
+            if (!valid() || mc.getConnection() == null) return;
             mc.getConnection().send(new ServerboundMovePlayerPacket.Rot((float) yaw, (float) pitch, mc.player.onGround(), mc.player.horizontalCollision));
             runCallback();
         }
 
         public void runCallback() {
-            if (callback != null) callback.run();
+            Runnable action = callback;
+            callback = null;
+            if (action == null || !valid()) return;
+            try {
+                action.run();
+            } catch (RuntimeException failure) {
+                Client33.LOG.error("Deferred rotation action failed.", failure);
+            }
         }
     }
 }

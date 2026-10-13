@@ -11,6 +11,7 @@ import com.gaspoweredcake.client33.Client33;
 import com.gaspoweredcake.client33.commands.Command;
 import com.gaspoweredcake.client33.commands.arguments.MacroArgumentType;
 import com.gaspoweredcake.client33.events.world.TickEvent;
+import com.gaspoweredcake.client33.events.game.GameLeftEvent;
 import com.gaspoweredcake.client33.systems.macros.Macro;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
@@ -104,11 +105,22 @@ public class MacroCommand extends Command {
             runMacros();
         }
 
-        scheduledMacros.forEach(ScheduledMacro::tick);
+    }
+
+    @EventHandler
+    private void onGameLeft(GameLeftEvent event) {
+        clearAll();
     }
 
     private void runMacros() {
-        scheduledMacros.removeIf(ScheduledMacro::run);
+        for (ScheduledMacro scheduled : List.copyOf(scheduledMacros)) {
+            if (!scheduledMacros.contains(scheduled)) continue;
+            if (scheduled.delay > 0) scheduled.tick();
+            else {
+                scheduledMacros.remove(scheduled);
+                scheduled.run();
+            }
+        }
     }
 }
 

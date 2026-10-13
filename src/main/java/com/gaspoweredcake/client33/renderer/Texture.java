@@ -43,14 +43,15 @@ public class Texture extends AbstractTexture {
     }
 
     public void upload(ByteBuffer buffer) {
-        var image = getImage();
-
-        buffer.rewind();
-        MemoryUtil.memCopy(MemoryUtil.memAddress(buffer), image.getPointer(), buffer.remaining());
-
-        RenderSystem.getDevice().createCommandEncoder().writeToTexture(texture, image);
-
-        image.close();
+        ByteBuffer pixels = buffer.duplicate().rewind();
+        long expected = (long) getWidth() * getHeight() * (texture.getFormat() == GpuFormat.R8_UNORM ? 1 : 4);
+        if (!pixels.isDirect() || pixels.remaining() != expected) {
+            throw new IllegalArgumentException("Texture upload requires a direct buffer of exactly " + expected + " bytes.");
+        }
+        try (var image = getImage()) {
+            MemoryUtil.memCopy(MemoryUtil.memAddress(pixels), image.getPointer(), expected);
+            RenderSystem.getDevice().createCommandEncoder().writeToTexture(texture, image);
+        }
     }
 
     private @NonNull NativeImage getImage() {
@@ -69,26 +70,35 @@ public class Texture extends AbstractTexture {
         try (var in = Texture.class.getResourceAsStream(path)) {
             if (in == null) return null;
 
-            var data = TextureUtil.readResource(in).rewind();
-
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                IntBuffer width = stack.mallocInt(1);
-                IntBuffer height = stack.mallocInt(1);
-                IntBuffer comp = stack.mallocInt(1);
-
-                STBImage.stbi_set_flip_vertically_on_load(flipY);
-                ByteBuffer image = STBImage.stbi_load_from_memory(data, width, height, comp, 4);
-
-                var texture = new Texture(width.get(0), height.get(0), GpuFormat.RGBA8_UNORM, filter, filter);
-                texture.upload(image);
-
-                STBImage.stbi_image_free(image);
-                STBImage.stbi_set_flip_vertically_on_load(false);
-
-                return texture;
-            }
-        } catch (IOException _) {
+            return read(in, flipY, filter);
+        } catch (IOException e) {
             return null;
+        }
+    }
+
+    /** The caller owns the stream; decoded native buffers are always released here. */
+    public static Texture read(java.io.InputStream in, boolean flipY, FilterMode filter) throws IOException {
+        ByteBuffer data = TextureUtil.readResource(in).rewind();
+        ByteBuffer image = null;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer width = stack.mallocInt(1);
+            IntBuffer height = stack.mallocInt(1);
+            IntBuffer comp = stack.mallocInt(1);
+            STBImage.stbi_set_flip_vertically_on_load_thread(flipY ? 1 : 0);
+            image = STBImage.stbi_load_from_memory(data, width, height, comp, 4);
+            if (image == null) throw new IOException("Could not decode texture: " + STBImage.stbi_failure_reason());
+            Texture result = new Texture(width.get(0), height.get(0), GpuFormat.RGBA8_UNORM, filter, filter);
+            try {
+                result.upload(image);
+                return result;
+            } catch (RuntimeException | Error failure) {
+                result.close();
+                throw failure;
+            }
+        } finally {
+            STBImage.stbi_image_free(image);
+            STBImage.stbi_set_flip_vertically_on_load_thread(0);
+            MemoryUtil.memFree(data);
         }
     }
 }

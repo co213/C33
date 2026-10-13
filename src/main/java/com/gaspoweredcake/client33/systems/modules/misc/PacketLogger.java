@@ -7,6 +7,7 @@ package com.gaspoweredcake.client33.systems.modules.misc;
 
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import com.gaspoweredcake.client33.Client33;
+import com.gaspoweredcake.client33.utils.files.LogRetention;
 import com.gaspoweredcake.client33.events.packets.PacketEvent;
 import com.gaspoweredcake.client33.settings.*;
 import com.gaspoweredcake.client33.systems.modules.Categories;
@@ -27,7 +28,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -130,6 +130,7 @@ public class PacketLogger extends Module {
     private static final DateTimeFormatter FILE_NAME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
     private final Object2IntOpenHashMap<PacketType<? extends Packet<?>>> packetCounts = new Object2IntOpenHashMap<>();
     private @Nullable BufferedWriter fileWriter;
+    private @Nullable Path currentLogFile;
     private long lastFlushMs;
     private long currentFileSizeBytes;
     private int currentFileIndex;
@@ -141,7 +142,7 @@ public class PacketLogger extends Module {
     }
 
     @Override
-    public void onActivate() {
+    public synchronized void onActivate() {
         closeFileWriter();
 
         packetCounts.clear();
@@ -163,15 +164,15 @@ public class PacketLogger extends Module {
     }
 
     @Override
-    public void onDeactivate() {
+    public synchronized void onDeactivate() {
         if (showSummary.get() && !packetCounts.isEmpty()) {
             logSummary();
         }
         closeFileWriter();
     }
 
-    private void logPacket(String direction, Packet<?> packet) {
-        if (!logToChat.get() && !logToFile.get()) return;
+    private synchronized void logPacket(String direction, Packet<?> packet) {
+        if (!isActive() || (!logToChat.get() && !logToFile.get())) return;
 
         // Update count
         packetCounts.addTo(packet.type(), 1);
@@ -211,7 +212,7 @@ public class PacketLogger extends Module {
 
         try {
             int lineBytes = line.getBytes(StandardCharsets.UTF_8).length + LINE_SEPARATOR_BYTES;
-            if (currentFileSizeBytes + lineBytes > maxFileSizeMB.get() * 1024L * 1024L) openNewLogFile();
+            if (currentFileSizeBytes + lineBytes > Math.min(maxFileSizeMB.get(), maxTotalLogsMB.get()) * 1024L * 1024L) openNewLogFile();
 
             fileWriter.write(line);
             fileWriter.newLine();
@@ -220,6 +221,7 @@ public class PacketLogger extends Module {
             long now = System.currentTimeMillis();
             if (now - lastFlushMs >= flushInterval.get() * 1000L) {
                 fileWriter.flush();
+                cleanupOldLogs();
                 lastFlushMs = now;
             }
         } catch (IOException e) {
@@ -229,16 +231,17 @@ public class PacketLogger extends Module {
     }
 
     private void openNewLogFile() throws IOException {
-        if (fileWriter != null) fileWriter.close();
+        closeFileWriter();
         if (sessionStartTime == null) sessionStartTime = LocalDateTime.now();
-
-        String fileName = "packets-%s-%d.log".formatted(sessionStartTime.format(FILE_NAME_FORMATTER), currentFileIndex++);
-        fileWriter = Files.newBufferedWriter(
-            PACKET_LOGS_DIR.resolve(fileName),
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE
-        );
+        while (true) {
+            String name = "packets-%s-%d.log".formatted(sessionStartTime.format(FILE_NAME_FORMATTER), currentFileIndex++);
+            Path path = PACKET_LOGS_DIR.resolve(name);
+            try {
+                fileWriter = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                currentLogFile = path;
+                break;
+            } catch (java.nio.file.FileAlreadyExistsException ignored) { }
+        }
         currentFileSizeBytes = 0;
         cleanupOldLogs();
     }
@@ -252,6 +255,7 @@ public class PacketLogger extends Module {
                 // Safe to ignore on close or rotation
             }
             fileWriter = null;
+            currentLogFile = null;
         }
     }
 
@@ -260,30 +264,9 @@ public class PacketLogger extends Module {
      * Deletes oldest files first.
      */
     private void cleanupOldLogs() throws IOException {
-        long maxBytes = maxTotalLogsMB.get() * 1024L * 1024L;
-        List<LogFileEntry> logFiles = new ArrayList<>();
-        try (var stream = Files.list(PACKET_LOGS_DIR)) {
-            for (Path p : stream.toList()) {
-                String name = p.getFileName().toString();
-                if (!name.startsWith("packets-") || !name.endsWith(".log")) continue;
-                try {
-                    logFiles.add(new LogFileEntry(p, Files.size(p), Files.getLastModifiedTime(p).toMillis()));
-                } catch (IOException _) {
-                    // Skip files that can't be accessed
-                }
-            }
-        }
-
-        logFiles.sort(Comparator.comparingLong(LogFileEntry::lastModified));
-        long totalSize = 0;
-        for (LogFileEntry entry : logFiles) {
-            totalSize += entry.size();
-            if (totalSize > maxBytes) Files.deleteIfExists(entry.path());
-        }
+        LogRetention.prune(PACKET_LOGS_DIR, currentLogFile, maxTotalLogsMB.get() * 1024L * 1024L);
     }
 
-    private record LogFileEntry(Path path, long size, long lastModified) {
-    }
 
     @EventHandler(priority = EventPriority.HIGHEST + 1)
     private void onReceivePacket(PacketEvent.Receive event) {

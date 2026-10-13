@@ -2,6 +2,7 @@ package com.gaspoweredcake.client33;
 
 import com.gaspoweredcake.client33.utils.storage.ContainerSnapshot;
 import com.gaspoweredcake.client33.utils.storage.ContainerMemory;
+import com.gaspoweredcake.client33.utils.storage.StorageLocations;
 import com.gaspoweredcake.client33.utils.render.LabelLayout;
 import java.util.*;
 
@@ -32,6 +33,14 @@ final class StorageRegression {
         check(memory.get("b", new Object(), 100, 1000) == null, "replaced object cannot inherit inventory");
         memory.expire(1100, 1000); check(memory.size() == 0, "expiry removes retained summaries");
         memory.put("a", identity, snapshot); memory.clear(); check(memory.size() == 0, "world reset clears memory");
+        var locations = new StorageLocations<String, String>(2);
+        locations.observe("a", "Chest", 1); locations.observe("b", "Barrel", 2);
+        locations.observe("a", "Chest", 3); locations.observe("c", "Dispenser", 4);
+        check(locations.entries().size() == 2 && locations.entries().getFirst().key().equals("a"), "location eviction preserves most recently seen positions");
+        var remembered = locations.entries();
+        locations.expire(13, 10);
+        check(locations.entries().size() == 1 && remembered.size() == 2, "expiry and immutable snapshot iteration");
+        locations.clear(); check(locations.entries().isEmpty(), "world change clears location memory");
         var layout = new LabelLayout(800, 600);
         var first = layout.place(400, 400, 120, 45); var second = layout.place(400, 400, 120, 45);
         check(first != null && second != null && !first.overlaps(second), "cluster labels shift without overlapping");

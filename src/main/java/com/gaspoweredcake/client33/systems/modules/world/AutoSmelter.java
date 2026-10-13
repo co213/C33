@@ -83,10 +83,11 @@ public class AutoSmelter extends Module {
 
     public void tick(AbstractFurnaceMenu c) {
         // Limit actions to happen every n ticks
-        if (mc.player.tickCount % 10 == 0) return;
+        if (mc.player.tickCount % 10 != 0) return;
 
         // Check for fuel
         checkFuel(c);
+        if (!isActive()) return;
 
         // Take the smelted results
         takeResults(c);
@@ -122,7 +123,6 @@ public class AutoSmelter extends Module {
         if (slot == -1) return;
 
         InvUtils.move().fromId(slot).toId(0);
-        c.slots.getFirst().getItem().isEmpty();
     }
 
     private void checkFuel(AbstractFurnaceMenu c) {

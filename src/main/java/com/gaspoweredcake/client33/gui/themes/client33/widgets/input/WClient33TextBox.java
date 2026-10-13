@@ -33,19 +33,15 @@ public class WClient33TextBox extends WTextBox implements Client33Widget {
             @Override
             protected void onRender(GuiRenderer renderer1, double mouseX, double mouseY, double delta) {
                 Client33GuiTheme theme1 = theme();
-                double s = theme1.scale(2);
-                Color c = theme1.outlineColor.get();
 
                 Color col = theme1.backgroundColor.get();
                 int preA = col.a;
                 col.a += col.a / 2;
                 col.validate();
-                renderer1.quad(this, col);
+                renderer1.roundedQuad(this, theme1.scale(4), col);
                 col.a = preA;
 
-                renderer1.quad(x, y + height - s, width, s, c);
-                renderer1.quad(x, y, s, height - s, c);
-                renderer1.quad(x + width - s, y, s, height - s, c);
+
             }
         };
     }
@@ -70,7 +66,7 @@ public class WClient33TextBox extends WTextBox implements Client33Widget {
         protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
             super.onRender(renderer, mouseX, mouseY, delta);
 
-            if (selected) renderer.quad(this, SELECTED_COLOR);
+            if (selected) renderer.roundedQuad(this, theme.scale(4), SELECTED_COLOR);
         }
 
         @Override

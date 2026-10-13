@@ -108,7 +108,7 @@ public class BaritoneSettings implements IPathManager.ISettings {
                         .name(setting.getName())
                         .description(getDescription(setting.getName()))
                         .defaultValue((double) setting.defaultValue)
-                        .max(SETTING_MAX_VALUES.getOrDefault(setting.getName(), 10.0))
+                        .max(SETTING_MAX_VALUES.getOrDefault(setting.getName(), Double.MAX_VALUE))
                         .sliderMax(SETTING_MAX_VALUES.getOrDefault(setting.getName(), 10.0))
                         .onChanged(aDouble -> setting.value = aDouble)
                         .onModuleActivated(doubleSetting -> doubleSetting.set((Double) setting.value))
@@ -119,7 +119,8 @@ public class BaritoneSettings implements IPathManager.ISettings {
                         .name(setting.getName())
                         .description(getDescription(setting.getName()))
                         .defaultValue(((Float) setting.defaultValue).doubleValue())
-                        .max(SETTING_MAX_VALUES.getOrDefault(setting.getName(), 10.0))
+                        .min(-Float.MAX_VALUE)
+                        .max(SETTING_MAX_VALUES.getOrDefault(setting.getName(), (double) Float.MAX_VALUE))
                         .sliderMax(SETTING_MAX_VALUES.getOrDefault(setting.getName(), 10.0))
                         .onChanged(aDouble -> setting.value = aDouble.floatValue())
                         .onModuleActivated(doubleSetting -> doubleSetting.set(((Float) setting.value).doubleValue()))
@@ -150,7 +151,10 @@ public class BaritoneSettings implements IPathManager.ISettings {
                         .description(getDescription(setting.getName()))
                         .defaultValue(((Long) setting.defaultValue).intValue())
                         .onChanged(integer -> setting.value = integer.longValue())
-                        .onModuleActivated(integerSetting -> integerSetting.set(((Long) setting.value).intValue()))
+                        .onModuleActivated(integerSetting -> {
+                            long current = (Long) setting.value;
+                            if (current >= Integer.MIN_VALUE && current <= Integer.MAX_VALUE) integerSetting.set((int) current);
+                        })
                         .build()
                     );
                 } else if (value instanceof String) {
@@ -170,7 +174,10 @@ public class BaritoneSettings implements IPathManager.ISettings {
                         .description(getDescription(setting.getName()))
                         .defaultValue(new SettingColor(c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha()))
                         .onChanged(color -> setting.value = new Color(color.r, color.g, color.b, color.a))
-                        .onModuleActivated(colorSetting -> colorSetting.set(new SettingColor(c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha())))
+                        .onModuleActivated(colorSetting -> {
+                            Color current = (Color) setting.value;
+                            colorSetting.set(new SettingColor(current.getRed(), current.getGreen(), current.getBlue(), current.getAlpha()));
+                        })
                         .build()
                     );
                 } else if (value instanceof List) {
@@ -208,13 +215,13 @@ public class BaritoneSettings implements IPathManager.ISettings {
     private static Map<String, String> descriptions;
 
     private static void addDescription(String settingName, String description) {
-        descriptions.put(settingName.toLowerCase(), description);
+        descriptions.put(settingName.toLowerCase(java.util.Locale.ROOT), description);
     }
 
     private static String getDescription(String settingName) {
         if (descriptions == null) loadDescriptions();
 
-        return descriptions.get(settingName.toLowerCase());
+        return descriptions.getOrDefault(settingName.toLowerCase(java.util.Locale.ROOT), "Baritone setting: " + settingName + ".");
     }
 
     private static void loadDescriptions() {

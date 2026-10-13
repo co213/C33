@@ -15,7 +15,13 @@ import com.gaspoweredcake.client33.events.client33.MouseScrollEvent;
 import com.gaspoweredcake.client33.events.packets.PacketEvent;
 import com.gaspoweredcake.client33.events.world.ChunkOcclusionEvent;
 import com.gaspoweredcake.client33.events.world.TickEvent;
-import com.gaspoweredcake.client33.pathing.PathManagers;
+import com.gaspoweredcake.client33.pathing.Navigation;
+import com.gaspoweredcake.client33.systems.waypoints.Waypoint;
+import com.gaspoweredcake.client33.systems.waypoints.Waypoints;
+import com.gaspoweredcake.client33.utils.player.PlayerUtils;
+import com.gaspoweredcake.client33.gui.GuiTheme;
+import com.gaspoweredcake.client33.gui.widgets.WWidget;
+import com.gaspoweredcake.client33.gui.widgets.containers.WTable;
 import com.gaspoweredcake.client33.settings.BoolSetting;
 import com.gaspoweredcake.client33.settings.DoubleSetting;
 import com.gaspoweredcake.client33.settings.Setting;
@@ -148,7 +154,7 @@ public class Freecam extends Module {
 
     private final Setting<Boolean> baritoneClick = sgPathing.add(new BoolSetting.Builder()
         .name("click-to-path")
-        .description("Sets a pathfinding goal to any block/entity you click at.")
+        .description("Left-click a waypoint, block or entity to walk there and exit Freecam. Requires Baritone.")
         .defaultValue(false)
         .build()
     );
@@ -159,6 +165,23 @@ public class Freecam extends Module {
         .defaultValue(false)
         .build()
     );
+
+    private final Setting<Boolean> mineOnPath = sgPathing.add(new BoolSetting.Builder()
+        .name("allow-mining").description("Allow Baritone to mine obstructing blocks on your route.")
+        .defaultValue(false).build());
+
+    private final Setting<Boolean> markWaypoint = sgPathing.add(new BoolSetting.Builder()
+        .name("middle-click-waypoint").description("Middle-click a block to save a waypoint from the camera.")
+        .defaultValue(true).build());
+
+    @Override
+    public WWidget getWidget(GuiTheme theme) {
+        WTable table = theme.table();
+        table.add(theme.label(Navigation.status()));
+        table.row();
+        table.add(theme.button("Stop navigation")).widget().action = Navigation::stop;
+        return table;
+    }
 
     public final Vector3d pos = new Vector3d();
     public final Vector3d prevPos = new Vector3d();
@@ -182,6 +205,7 @@ public class Freecam extends Module {
 
     @Override
     public void onActivate() {
+        clickTs = 0;
         fovScale = mc.options.fovEffectScale().get();
         bobView = mc.options.bobView().get();
         if (staticView.get()) {
@@ -256,7 +280,8 @@ public class Freecam extends Module {
 
     @EventHandler(priority = EventPriority.HIGH)
     private void onUse(DoItemUseEvent event) {
-        if (!interactThroughWalls.get() || event.isCancelled() || mc.player == null || mc.level == null
+        if (Modules.get().get(com.gaspoweredcake.client33.systems.modules.player.GhostHand.class).probing()
+            || !interactThroughWalls.get() || event.isCancelled() || mc.player == null || mc.level == null
             || mc.gameMode == null || mc.gui.screen() != null || mc.player.isShiftKeyDown()
             || mc.hitResult instanceof EntityHitResult) return;
 
@@ -264,7 +289,7 @@ public class Freecam extends Module {
             && isContainer(hit.getBlockPos())) return;
 
         BlockHitResult hit = findContainerThroughWalls();
-        if (hit == null || mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(hit.getBlockPos())) > Math.pow(mc.player.blockInteractionRange() + 1, 2)) return;
+        if (hit == null || mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(hit.getBlockPos())) > Math.pow(mc.player.blockInteractionRange(), 2)) return;
 
         for (InteractionHand hand : InteractionHand.values()) {
             InteractionResult result = mc.gameMode.useItemOn(mc.player, hand, hit);
@@ -329,9 +354,9 @@ public class Freecam extends Module {
             if (mc.hitResult instanceof EntityHitResult ehr) {
                 crossHairPos = ehr.getEntity().blockPosition();
                 Rotations.rotate(Rotations.getYaw(crossHairPos), Rotations.getPitch(crossHairPos), 0, null);
-            } else {
-                crossHairPosition = mc.hitResult.getLocation();
-                crossHairPos = ((BlockHitResult) mc.hitResult).getBlockPos();
+            } else if (mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+                crossHairPosition = hit.getLocation();
+                crossHairPos = hit.getBlockPos();
 
                 if (!mc.level.getBlockState(crossHairPos).isAir()) {
                     Rotations.rotate(Rotations.getYaw(crossHairPosition), Rotations.getPitch(crossHairPosition), 0, null);
@@ -399,7 +424,7 @@ public class Freecam extends Module {
             max,
             AABB.encapsulatingFullBlocks(BlockPos.containing(posVec.x, posVec.y, posVec.z), BlockPos.containing(max.x, max.y, max.z)),
             _ -> true,
-            maxDist
+            (double) maxDist * maxDist
         );
 
         if (res == null) return null;
@@ -430,7 +455,8 @@ public class Freecam extends Module {
         long prevClick = clickTs;
         clickTs = System.currentTimeMillis();
 
-        if (requireDoubleClick.get() && clickTs - prevClick > 500) return;
+        if (requireDoubleClick.get() && (prevClick == 0 || clickTs - prevClick > 500)) return;
+        clickTs = 0;
 
         Camera cam = mc.gameRenderer.mainCamera();
         Vec3 posVec = cam.position();
@@ -438,22 +464,62 @@ public class Freecam extends Module {
         short maxDist = 256;
         Vec3 max = posVec.add(lookVec.scale(maxDist));
 
-        BlockPos pos = rayCastEntity(posVec, max, maxDist);
+        BlockPos pos = waypointUnderCrosshair(posVec, lookVec);
+        if (pos == null) pos = rayCastEntity(posVec, max, maxDist);
         if (pos == null) {
             pos = rayCastBlock(posVec, max);
         }
 
         if (pos == null) return;
 
-        PathManagers.get().moveTo(pos);
+        try {
+            Navigation.start(pos, false, mineOnPath.get());
+            info("Walking to %s%s.", pos.toShortString(), mineOnPath.get() ? " (mining enabled)" : "");
+            toggle();
+        } catch (IllegalStateException | IllegalArgumentException failure) { error(failure.getMessage()); }
+    }
+
+    @Nullable
+    private BlockPos waypointUnderCrosshair(Vec3 origin, Vec3 look) {
+        BlockPos selected = null;
+        double closestAngle = Math.cos(Math.toRadians(2));
+        for (Waypoint waypoint : Waypoints.get()) {
+            if (!waypoint.visible.get() || waypoint.dimension.get() != PlayerUtils.getDimension()) continue;
+            BlockPos target = waypoint.getPos();
+            Vec3 offset = new Vec3(target.getX() + 0.5, target.getY(), target.getZ() + 0.5).subtract(origin);
+            double distance = offset.length();
+            if (distance < 0.1 || distance > waypoint.maxVisible.get()) continue;
+            double alignment = offset.scale(1 / distance).dot(look);
+            if (alignment > closestAngle) { closestAngle = alignment; selected = target; }
+        }
+        return selected;
+    }
+
+    private void markViewedBlock() {
+        Camera camera = mc.gameRenderer.mainCamera();
+        Vec3 origin = camera.position();
+        BlockPos target = rayCastBlock(origin, origin.add(Vec3.directionFromRotation(camera.xRot(), camera.yRot()).scale(256)));
+        if (target == null) { warning("Look at a block within 256 blocks to mark a waypoint."); return; }
+        Waypoints.get().add(new Waypoint.Builder().name("Freecam " + target.toShortString())
+            .pos(target).dimension(PlayerUtils.getDimension()).build());
+        if (!Modules.get().isActive(WaypointsModule.class)) Modules.get().get(WaypointsModule.class).toggle();
+        info("Waypoint marked at %s. Enable click-to-path, then left-click its marker to walk there.", target.toShortString());
     }
 
     @EventHandler(priority = EventPriority.HIGH)
     private void onMouseClick(MouseClickEvent event) {
-        if (checkGuiMove()) return;
+        if (mc.gui.screen() != null || event.isCancelled()) return;
+
+        if (markWaypoint.get() && event.button() == org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
+            event.cancel();
+            if (event.action == KeyAction.Press) markViewedBlock();
+            return;
+        }
 
         if (baritoneClick.get() && event.action == KeyAction.Press && mc.options.keyAttack.matchesMouse(event.click)) {
+            event.cancel();
             setGoal();
+            return;
         }
 
         if (onInput(event.button(), event.action)) event.cancel();

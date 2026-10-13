@@ -15,8 +15,6 @@ import com.gaspoweredcake.client33.systems.modules.movement.Flight;
 import com.gaspoweredcake.client33.systems.modules.movement.NoSlow;
 import com.gaspoweredcake.client33.systems.modules.movement.Sprint;
 import com.gaspoweredcake.client33.systems.modules.player.Reach;
-import com.gaspoweredcake.client33.systems.modules.player.SpeedMine;
-import com.gaspoweredcake.client33.utils.world.BlockUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -25,8 +23,6 @@ import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -68,28 +64,6 @@ public abstract class PlayerMixin extends LivingEntity {
     @Inject(method = "isCreative", at = @At("HEAD"), cancellable = true)
     private void onIsCreative(CallbackInfoReturnable<Boolean> cir) {
         if (mc.getConnection() == null) cir.setReturnValue(false);
-    }
-
-    @ModifyReturnValue(method = "getDestroySpeed", at = @At(value = "RETURN"))
-    public float onGetBlockBreakingSpeed(float breakSpeed, BlockState state) {
-        if (!level().isClientSide()) return breakSpeed;
-
-        SpeedMine speedMine = Modules.get().get(SpeedMine.class);
-        if (!speedMine.isActive() || speedMine.mode.get() != SpeedMine.Mode.Normal || !speedMine.filter(state.getBlock()))
-            return breakSpeed;
-
-        float breakSpeedMod = (float) (breakSpeed * speedMine.modifier.get());
-
-        if (mc.hitResult instanceof BlockHitResult bhr) {
-            BlockPos pos = bhr.getBlockPos();
-            if (speedMine.modifier.get() < 1 || (BlockUtils.canInstaBreak(pos, breakSpeed) == BlockUtils.canInstaBreak(pos, breakSpeedMod))) {
-                return breakSpeedMod;
-            } else {
-                return 0.9f / BlockUtils.calcBlockBreakingDelta2(pos, 1);
-            }
-        }
-
-        return breakSpeed;
     }
 
     @ModifyReturnValue(method = "getSpeed", at = @At("RETURN"))

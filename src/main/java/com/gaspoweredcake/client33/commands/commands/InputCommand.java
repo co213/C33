@@ -11,6 +11,7 @@ import com.mojang.datafixers.util.Pair;
 import com.gaspoweredcake.client33.Client33;
 import com.gaspoweredcake.client33.commands.Command;
 import com.gaspoweredcake.client33.events.world.TickEvent;
+import com.gaspoweredcake.client33.events.game.GameLeftEvent;
 import com.gaspoweredcake.client33.mixin.KeyMappingAccessor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.KeyMapping;
@@ -83,8 +84,7 @@ public class InputCommand extends Command {
             if (activeHandlers.isEmpty()) warning("No active keypress handlers.");
             else {
                 info("Cleared all keypress handlers.");
-                activeHandlers.forEach(Client33.EVENT_BUS::unsubscribe);
-                activeHandlers.clear();
+                for (KeypressHandler handler : List.copyOf(activeHandlers)) handler.stop();
             }
             return SINGLE_SUCCESS;
         }));
@@ -106,8 +106,7 @@ public class InputCommand extends Command {
             if (index >= activeHandlers.size()) warning("Index out of range.");
             else {
                 info("Removed keypress handler.");
-                Client33.EVENT_BUS.unsubscribe(activeHandlers.get(index));
-                activeHandlers.remove(index);
+                activeHandlers.get(index).stop();
             }
             return SINGLE_SUCCESS;
         })));
@@ -131,6 +130,17 @@ public class InputCommand extends Command {
             Client33.EVENT_BUS.subscribe(this);
         }
 
+        private void stop() {
+            Client33.EVENT_BUS.unsubscribe(this);
+            activeHandlers.remove(this);
+            if (activeHandlers.stream().noneMatch(handler -> handler.key == key)) key.setDown(false);
+        }
+
+        @EventHandler
+        private void onGameLeft(GameLeftEvent event) {
+            stop();
+        }
+
         @EventHandler
         private void onTick(TickEvent.Post event) {
             if (ticks == totalTicks) press(key);
@@ -138,9 +148,7 @@ public class InputCommand extends Command {
             if (ticks-- > 0) {
                 key.setDown(true);
             } else {
-                key.setDown(false);
-                Client33.EVENT_BUS.unsubscribe(this);
-                activeHandlers.remove(this);
+                stop();
             }
         }
     }

@@ -32,8 +32,9 @@ public class TexturePacker {
     private final List<Image> images = new ArrayList<>();
 
     public GuiTexture add(Identifier id) {
-        try {
-            InputStream in = mc.getResourceManager().getResource(id).get().open();
+        var resource = mc.getResourceManager().getResource(id);
+        if (resource.isEmpty()) return null;
+        try (InputStream in = resource.get().open()) {
             GuiTexture texture = new GuiTexture();
 
             try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -49,6 +50,7 @@ public class TexturePacker {
 
                     ByteBuffer imageBuffer = STBImage.stbi_load_from_memory(rawImageBuffer, w, h, ignored, 4);
 
+                    if (imageBuffer == null) throw new IOException("Could not decode texture " + id);
                     int width = w.get(0);
                     int height = h.get(0);
 
@@ -77,7 +79,7 @@ public class TexturePacker {
 
     private void addResized(GuiTexture texture, ByteBuffer srcImageBuffer, int srcWidth, int srcHeight, int width) {
         double scaleFactor = (double) width / srcWidth;
-        int height = (int) (srcHeight * scaleFactor);
+        int height = Math.max(1, (int) (srcHeight * scaleFactor));
 
         ByteBuffer imageBuffer = BufferUtils.createByteBuffer(width * height * 4);
         STBImageResize.stbir_resize_uint8_linear(srcImageBuffer, srcWidth, srcHeight, 0, imageBuffer, width, height, 0, 4);
@@ -89,6 +91,7 @@ public class TexturePacker {
     }
 
     public Texture pack() {
+        if (images.isEmpty()) throw new IllegalStateException("Cannot pack an empty texture atlas.");
         // Calculate final width and height and image positions
         int width = 0;
         int height = 0;
@@ -142,6 +145,7 @@ public class TexturePacker {
 
         ((Buffer) buffer).rewind();
 
+        images.clear();
         Texture texture = new Texture(width, height, GpuFormat.RGBA8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);
         texture.upload(buffer);
 

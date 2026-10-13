@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "com.gaspoweredcake.client33.MixinPlugin",
   "client": [
-    "ComeCommandMixin"
+    "ComeCommandMixin",
+    "BaritoneWorkerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

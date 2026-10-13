@@ -74,12 +74,12 @@ public class WClient33Module extends WPressable implements Client33Widget {
         animationProgress2 = Mth.clamp(animationProgress2, 0, 1);
 
         if (animationProgress1 > 0) {
-            renderer.quad(x, y, width * animationProgress1, height, theme.moduleBackground.get());
+            renderer.roundedQuad(x, y, width * animationProgress1, height, theme.scale(5), theme.moduleBackground.get());
         }
         if (animationProgress2 > 0) {
-            renderer.quad(x, y + height * (1 - animationProgress2), theme.scale(2), height * animationProgress2, theme.accentColor.get());
+            renderer.roundedQuad(x, y + height * (1 - animationProgress2), theme.scale(2), height * animationProgress2, theme.scale(1), theme.accentColor.get());
         }
-        renderer.quad(x, y + height - theme.scale(1), width, theme.scale(1), theme.separatorEdges.get());
+        renderer.roundedQuad(x, y + height - theme.scale(1), width, theme.scale(1), theme.scale(0.5), theme.separatorEdges.get());
         String status = module.isActive() ? "ON" : "OFF";
         double statusWidth = theme.textWidth("OFF");
         renderer.text(status, x + width - pad - statusWidth, y + pad,

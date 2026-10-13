@@ -125,7 +125,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
                 removeInfo.markRowForRemoval();
             }
 
-            table.add(theme.label(setting.title)).top().marginTop(settingTitleTopMargin()).widget().tooltip = setting.description;
+            table.add(settingLabel(setting)).top().marginTop(settingTitleTopMargin()).widget().tooltip = setting.description;
 
             Factory factory = getFactory(setting.getClass());
             if (factory != null) factory.create(table, setting);
@@ -135,6 +135,10 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
         if (removeInfo != null) removeInfoList.add(removeInfo);
         if (table.cells.isEmpty()) list.cells.removeIf(cell -> cell.widget() == section);
+    }
+
+    protected WLabel settingLabel(Setting<?> setting) {
+        return theme.label(setting.title);
     }
 
     private static class RemoveInfo {

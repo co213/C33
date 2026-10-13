@@ -15,6 +15,10 @@ import com.gaspoweredcake.client33.renderer.text.TextRenderer;
 import com.gaspoweredcake.client33.utils.combat.CombatTelemetry;
 import com.gaspoweredcake.client33.utils.storage.ContainerObservations;
 import com.gaspoweredcake.client33.utils.storage.ContainerSnapshot;
+import com.gaspoweredcake.client33.utils.storage.StorageLocations;
+import com.gaspoweredcake.client33.events.world.ChunkDataEvent;
+import com.gaspoweredcake.client33.events.world.BlockUpdateEvent;
+import java.util.LinkedHashSet;
 import com.gaspoweredcake.client33.utils.render.NametagUtils;
 import com.gaspoweredcake.client33.utils.render.LabelLayout;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -31,7 +35,6 @@ import com.gaspoweredcake.client33.events.world.TickEvent;
 import com.gaspoweredcake.client33.events.game.GameLeftEvent;
 import net.minecraft.world.entity.vehicle.ContainerEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import com.gaspoweredcake.client33.gui.GuiTheme;
 import com.gaspoweredcake.client33.gui.widgets.WWidget;
@@ -66,6 +69,9 @@ public class StorageESP extends Module {
     private final ContainerObservations observations = new ContainerObservations();
     private record Overlay(Object source, AABB bounds, Color color, double distance) {}
     private final List<Overlay> overlays = new ArrayList<>();
+    private record Remembered(BlockPos pos, String name, long seenAt) {}
+    private final StorageLocations<BlockPos, String> locations = new StorageLocations<>(8192);
+    private final LinkedHashSet<BlockPos> dirtyPositions = new LinkedHashSet<>();
     private final List<BlockEntity> ordered = new ArrayList<>();
     private Object focused;
     private final Setting<Boolean> labels = sgData.add(new BoolSetting.Builder().name("labels").description("Decluttered storage type, distance and observed occupancy labels.").defaultValue(true).build());
@@ -73,16 +79,22 @@ public class StorageESP extends Module {
     private final Setting<Boolean> rememberContents = sgData.add(new BoolSetting.Builder().name("remember-contents").description("Remember server-sent contents after you open a container. Session only; never opens containers for you.").defaultValue(true).onChanged(value -> { if (!value) observations.clear(); }).build());
     private final Setting<Integer> memorySeconds = sgData.add(new IntSetting.Builder().name("memory-seconds").description("Expire remembered contents; other players may change them sooner.").defaultValue(300).range(10, 1800).sliderRange(10, 600).build());
     private final Setting<Integer> labelBudget = sgData.add(new IntSetting.Builder().name("label-budget").description("Maximum nonoverlapping labels per frame; closest containers have priority.").defaultValue(20).range(1, 64).sliderRange(1, 64).build());
-    private final Setting<Integer> labelRange = sgData.add(new IntSetting.Builder().name("label-range").description("Maximum distance for data labels and reticle selection.").defaultValue(40).range(4, 128).sliderRange(4, 128).build());
+    private final Setting<Integer> labelRange = sgData.add(new IntSetting.Builder().name("label-range").description("Maximum label distance; 0 removes the distance limit. Label budget still applies.").defaultValue(128).range(0, 1024).sliderRange(0, 256).build());
     private final Setting<Boolean> coordinates = sgData.add(new BoolSetting.Builder().name("label-coordinates").description("Add XYZ coordinates to each label; always shown in the inspector.").defaultValue(false).build());
     private final Setting<Integer> contentLines = sgData.add(new IntSetting.Builder().name("content-lines").description("Most numerous item types to list in the inspector.").defaultValue(5).range(1, 12).sliderRange(1, 12).build());
     private final Setting<Double> labelScale = sgVisual.add(new DoubleSetting.Builder().name("label-scale").description("Scale of container labels and inspector text.").defaultValue(0.7).range(0.4, 1.2).sliderRange(0.4, 1.2).build());
     private final Setting<Boolean> animate = sgVisual.add(new BoolSetting.Builder().name("animate").description("Animate hologram scan bands and locator rings.").defaultValue(true).build());
     private final Setting<SettingColor> accent = sgVisual.add(new ColorSetting.Builder().name("scan-accent").description("Hologram scan and focused-container accent.").defaultValue(new SettingColor(106, 232, 217, 220)).build());
+    private final Setting<Boolean> rememberLocations = sgData.add(new BoolSetting.Builder()
+        .name("remember-locations").description("Keep last-seen storage outlines when unloaded or disguised. Amber markers are unconfirmed, not live chests.")
+        .defaultValue(true).onChanged(value -> { if (!value) locations.clear(); }).build());
+    private final Setting<Integer> locationMemory = sgData.add(new IntSetting.Builder()
+        .name("location-memory-seconds").description("Expire unconfirmed storage locations after this many seconds. Cleared on world change.")
+        .defaultValue(600).range(10, 3600).sliderRange(30, 1800).build());
     private final SettingGroup sgOpened = settings.createGroup("Opened Rendering");
 
     private final LinkedHashMap<BlockPos, BlockEntity> containers = new LinkedHashMap<>();
-    private final ArrayDeque<ChunkAccess> scanQueue = new ArrayDeque<>();
+    private final LinkedHashMap<Long, ChunkAccess> scanQueue = new LinkedHashMap<>();
     private Object scanWorld;
     private int scanTick;
     private final Setting<Integer> chunksPerTick = sgGeneral.add(new IntSetting.Builder().name("chunks-per-tick")
@@ -212,8 +224,8 @@ public class StorageESP extends Module {
 
     private final Setting<Integer> maxDistance = sgGeneral.add(new IntSetting.Builder()
         .name("max-distance")
-        .description("Stops showing storage beyond this camera distance. Set to 0 for unlimited range.")
-        .defaultValue(64)
+        .description("Maximum camera distance. 0 shows all received storage within the render budget, plus enabled location memory.")
+        .defaultValue(0)
         .min(0)
         .sliderMax(128)
         .build()
@@ -286,6 +298,10 @@ public class StorageESP extends Module {
     public WWidget getWidget(GuiTheme theme) {
         WVerticalList list = theme.verticalList();
 
+        list.add(theme.label("Only server-sent containers can be detected. Amber memory is unconfirmed."));
+        list.add(theme.button("Use maximum loaded range")).widget().action = () -> {
+            maxDistance.set(0); fadeDistance.set(0.0); labelRange.set(0); renderBudget.set(4096);
+        };
         // Button to Clear Interacted Blocks
         WButton clear = list.add(theme.button("Clear Rendering Cache")).expandX().widget();
 
@@ -408,30 +424,68 @@ public class StorageESP extends Module {
         }
     }
 
+    @EventHandler(priority = meteordevelopment.orbit.EventPriority.LOW)
+    private void onRememberedRender(Render3DEvent event) {
+        if (!rememberLocations.get() || scanWorld != mc.level || mc.player == null) return;
+        int budget = Math.min(256, Math.max(0, renderBudget.get() - count));
+        for (var entry : locations.entries()) {
+            if (budget <= 0) break;
+            BlockPos pos = entry.key();
+            if (mc.level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
+                BlockEntity live = mc.level.getBlockEntity(pos);
+                if (live != null && storageBlocks.get().contains(live.getType())) continue;
+            }
+            double opacity = opacityAt(pos);
+            if (opacity < 0.075) continue;
+            Color color = new Color(255, 180, 70, (int) (160 * opacity));
+            AABB bounds = new AABB(pos);
+            event.renderer.box(pos, new Color(0, 0, 0, 0), color, ShapeMode.Lines, 0);
+            overlays.add(new Overlay(new Remembered(pos, entry.value(), entry.time()), bounds, color,
+                Math.sqrt(PlayerUtils.squaredDistanceToCamera(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5))));
+            budget--;
+        }
+    }
+
     private void clearCache() {
-        containers.clear(); ordered.clear(); overlays.clear(); observations.clear(); focused = null; scanQueue.clear(); scanTick = 0; scanWorld = mc.level;
+        containers.clear(); ordered.clear(); overlays.clear(); observations.clear(); locations.clear(); dirtyPositions.clear(); focused = null; scanQueue.clear(); scanTick = 0; scanWorld = mc.level;
     }
     @Override public void onActivate() { clearCache(); }
     @Override public void onDeactivate() { clearCache(); }
     @EventHandler private void onLeave(GameLeftEvent event) { clearCache(); }
+    @EventHandler private void onChunkData(ChunkDataEvent event) {
+        if (scanWorld != mc.level) clearCache();
+        scanQueue.put(event.chunk().getPos().pack(), event.chunk());
+    }
+    @EventHandler private void onBlockUpdate(BlockUpdateEvent event) {
+        if (dirtyPositions.size() >= 2048) dirtyPositions.remove(dirtyPositions.iterator().next());
+        dirtyPositions.add(event.pos.immutable());
+    }
+    private void observe(BlockPos pos) {
+        if (!mc.level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) return;
+        BlockEntity entity = mc.level.getBlockEntity(pos);
+        if (entity == null || !storageBlocks.get().contains(entity.getType())) { containers.remove(pos); return; }
+        if (containers.size() >= 8192 && !containers.containsKey(pos)) containers.remove(containers.keySet().iterator().next());
+        containers.put(pos.immutable(), entity);
+        if (rememberLocations.get()) locations.observe(pos.immutable(), name(entity), CombatTelemetry.now());
+    }
     @EventHandler private void onTick(TickEvent.Post event) {
         if (scanWorld != mc.level) clearCache();
         observations.tick(memorySeconds.get() * 1000L);
+        locations.expire(CombatTelemetry.now(), locationMemory.get() * 1000L);
         if (++scanTick % 20 == 0) containers.entrySet().removeIf(entry -> !mc.level.hasChunk(entry.getKey().getX() >> 4, entry.getKey().getZ() >> 4)
-            || mc.level.getBlockEntity(entry.getKey()) != entry.getValue());
+            || mc.level.getBlockEntity(entry.getKey()) != entry.getValue() || !storageBlocks.get().contains(entry.getValue().getType()));
+        var dirty = dirtyPositions.iterator();
+        for (int i = 0; i < 128 && dirty.hasNext(); i++) { BlockPos pos = dirty.next(); dirty.remove(); observe(pos); }
         if (scanQueue.isEmpty()) for (ChunkAccess chunk : Utils.chunks()) {
             double x = chunk.getPos().x() * 16.0 + 8, z = chunk.getPos().z() * 16.0 + 8;
-            if (maxDistance.get() == 0 || PlayerUtils.squaredDistanceToCamera(x, mc.player.getY(), z) <= Math.pow(maxDistance.get() + 24, 2)) scanQueue.addLast(chunk);
+            if (maxDistance.get() == 0 || PlayerUtils.squaredDistanceToCamera(x, mc.player.getY(), z) <= Math.pow(maxDistance.get() + 24, 2))
+                scanQueue.put(chunk.getPos().pack(), chunk);
         }
         for (int i = 0; i < chunksPerTick.get() && !scanQueue.isEmpty(); i++) {
-            ChunkAccess chunk = scanQueue.removeFirst();
+            var iterator = scanQueue.values().iterator();
+            ChunkAccess chunk = iterator.next(); iterator.remove();
             if (!mc.level.hasChunk(chunk.getPos().x(), chunk.getPos().z()) || mc.level.getChunk(chunk.getPos().x(), chunk.getPos().z()) != chunk) continue;
-            for (BlockPos pos : chunk.getBlockEntitiesPos()) {
-                BlockEntity entity = mc.level.getBlockEntity(pos);
-                if (entity == null || !storageBlocks.get().contains(entity.getType())) continue;
-                if (containers.size() >= 8192 && !containers.containsKey(pos)) containers.remove(containers.keySet().iterator().next());
-                containers.put(pos.immutable(), entity);
-            }
+            for (BlockPos pos : chunk.getBlockEntitiesPos()) observe(pos);
         }
         ordered.clear(); ordered.addAll(containers.values());
         ordered.sort(Comparator.comparingDouble(be -> PlayerUtils.squaredDistanceToCamera(be.getBlockPos().getX() + 0.5, be.getBlockPos().getY() + 0.5, be.getBlockPos().getZ() + 0.5)));
@@ -544,15 +598,17 @@ public class StorageESP extends Module {
     }
 
     private String name(Object source) {
+        if (source instanceof Remembered remembered) return remembered.name + " (last seen)";
         if (source instanceof Entity entity) return ContainerSnapshot.clean(entity.getDisplayName().getString(), 34);
         BlockEntity block = (BlockEntity) source;
         if (block instanceof Nameable named && named.hasCustomName()) return ContainerSnapshot.clean(named.getDisplayName().getString(), 34);
         return (ContainerObservations.partner(block) == null ? "" : "Double ") + ContainerSnapshot.clean(block.getBlockState().getBlock().getName().getString(), 26);
     }
-    private BlockPos position(Object source) { return source instanceof Entity entity ? entity.blockPosition() : ((BlockEntity) source).getBlockPos(); }
+    private BlockPos position(Object source) { if (source instanceof Remembered remembered) return remembered.pos; return source instanceof Entity entity ? entity.blockPosition() : ((BlockEntity) source).getBlockPos(); }
     private String location(Object source) { BlockPos p = position(source); return p.getX() + " / " + p.getY() + " / " + p.getZ(); }
     private ContainerSnapshot snapshot(Object source) { return rememberContents.get() ? observations.snapshot(source, memorySeconds.get() * 1000L) : null; }
     private String summary(Object source, ContainerSnapshot data) {
+        if (source instanceof Remembered) return "Unconfirmed location; may be removed or disguised";
         if (data != null) return data.occupied() + "/" + data.slots() + " slots  ·  " + data.items() + (data.items() == 1 ? " item" : " items");
         int capacity = ContainerObservations.capacity(source);
         return (capacity == 0 ? "" : capacity + " slots  ·  ") + "Contents unknown";
@@ -573,7 +629,7 @@ public class StorageESP extends Module {
         Object hit = hitSource(); Overlay selection = null;
         double nearest = 75 * 75;
         for (Overlay overlay : overlays) {
-            if (overlay.distance > labelRange.get()) continue;
+            if (labelRange.get() > 0 && overlay.distance > labelRange.get()) continue;
             if (overlay.source == hit) { selection = overlay; break; }
             var center = overlay.bounds.getCenter();
             Vector3d projected = new Vector3d(center.x, center.y, center.z);
@@ -590,14 +646,14 @@ public class StorageESP extends Module {
         int drawn = 0;
         if (labels.get()) for (Overlay overlay : overlays) {
             if (drawn >= labelBudget.get()) break;
-            if (overlay.distance > labelRange.get()) continue;
+            if (labelRange.get() > 0 && overlay.distance > labelRange.get()) continue;
             AABB box = overlay.bounds;
             Vector3d point = new Vector3d((box.minX + box.maxX) / 2, box.maxY + 0.28, (box.minZ + box.maxZ) / 2);
             if (!NametagUtils.to2D(point, 1, false) || point.z < 0 || point.z > 1) continue;
             var data = snapshot(overlay.source);
             String title = name(overlay.source) + "  /  " + Math.round(overlay.distance) + " m";
             String detail = summary(overlay.source, data);
-            String state = data == null ? "NOT OBSERVED" : (observations.live(overlay.source) ? "RECEIVING" : (data.serverObserved() ? "RECEIVED " : "MENU VIEW ") + Math.max(0, (CombatTelemetry.now() - data.observedAt()) / 1000) + "s AGO");
+            String state = overlay.source instanceof Remembered remembered ? "LAST SEEN " + Math.max(0, (CombatTelemetry.now() - remembered.seenAt) / 1000) + "s AGO" : data == null ? "NOT OBSERVED" : (observations.live(overlay.source) ? "RECEIVING" : (data.serverObserved() ? "RECEIVED " : "MENU VIEW ") + Math.max(0, (CombatTelemetry.now() - data.observedAt()) / 1000) + "s AGO");
             List<String> lines = new ArrayList<>(List.of(title, detail, state));
             if (coordinates.get()) lines.add(location(overlay.source));
             double w = lines.stream().mapToDouble(text::getWidth).max().orElse(0) + 20;
@@ -651,7 +707,8 @@ public class StorageESP extends Module {
             lines.add("Entity #" + entity.getId() + "  ·  " + (entity.isAlive() ? "loaded" : "removed"));
         }
         lines.add(summary(source, data));
-        if (data == null) lines.add(rememberContents.get() ? "Open container to observe its contents." : "Content memory disabled.");
+        if (source instanceof Remembered) lines.add("This is a remembered location, not current server data.");
+        else if (data == null) lines.add(rememberContents.get() ? "Open container to observe its contents." : "Content memory disabled.");
         else {
             lines.add((data.serverObserved() ? "Server snapshot " : "Client menu view ") + Math.max(0, (CombatTelemetry.now() - data.observedAt()) / 1000) + "s ago  ·  may have changed");
             if (data.enchanted() > 0 || data.lowestDurability() >= 0)

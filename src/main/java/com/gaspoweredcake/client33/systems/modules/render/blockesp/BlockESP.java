@@ -24,14 +24,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.client.multiplayer.ClientLevel;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.LinkedHashMap;
 
 public class BlockESP extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -80,9 +79,9 @@ public class BlockESP extends Module {
 
     private final Long2ObjectMap<ESPChunk> chunks = new Long2ObjectOpenHashMap<>();
     private final Set<ESPGroup> groups = new ReferenceOpenHashSet<>();
-    private final ExecutorService workerThread = Executors.newSingleThreadExecutor();
-
-    private DimensionType lastDimension;
+    private final LinkedHashMap<Long, ChunkAccess> pending = new LinkedHashMap<>();
+    private ESPChunk.Search search;
+    private ClientLevel scanWorld;
 
     public BlockESP() {
         super(Categories.Render, "block-esp", "Renders specified blocks through walls.", "search");
@@ -92,16 +91,18 @@ public class BlockESP extends Module {
 
     @Override
     public void onActivate() {
+        scanWorld = mc.level;
         synchronized (chunks) {
             chunks.clear();
             groups.clear();
+            pending.clear();
+            search = null;
         }
 
         for (ChunkAccess chunk : Utils.chunks()) {
             searchChunk(chunk);
         }
 
-        lastDimension = mc.level.dimensionType();
     }
 
     @Override
@@ -109,6 +110,8 @@ public class BlockESP extends Module {
         synchronized (chunks) {
             chunks.clear();
             groups.clear();
+            pending.clear();
+            search = null;
         }
     }
 
@@ -159,77 +162,69 @@ public class BlockESP extends Module {
     }
 
     private void searchChunk(ChunkAccess chunk) {
-        workerThread.submit(() -> {
-            if (!isActive()) return;
-            ESPChunk schunk = ESPChunk.searchChunk(chunk, blocks.get());
+        if (scanWorld != mc.level) return;
+        pending.put(chunk.getPos().pack(), chunk);
+        if (search != null && search.source.getPos().equals(chunk.getPos())) search = null;
+    }
 
-            if (schunk.size() > 0) {
-                synchronized (chunks) {
-                    chunks.put(chunk.getPos().pack(), schunk);
-                    schunk.update();
+    private boolean live(ChunkAccess chunk) {
+        return scanWorld == mc.level && mc.level.hasChunk(chunk.getPos().x(), chunk.getPos().z())
+            && mc.level.getChunk(chunk.getPos().x(), chunk.getPos().z()) == chunk;
+    }
 
-                    // Update neighbour chunks
-                    updateChunk(chunk.getPos().x() - 1, chunk.getPos().z());
-                    updateChunk(chunk.getPos().x() + 1, chunk.getPos().z());
-                    updateChunk(chunk.getPos().x(), chunk.getPos().z() - 1);
-                    updateChunk(chunk.getPos().x(), chunk.getPos().z() + 1);
-                }
-            }
-        });
+    private void release(ESPChunk chunk) {
+        if (chunk == null || chunk.blocks == null) return;
+        for (ESPBlock block : chunk.blocks.values()) {
+            if (block.group != null) block.group.remove(block, false);
+            block.loaded = false;
+        }
     }
 
     @EventHandler
     private void onBlockUpdate(BlockUpdateEvent event) {
-        // Minecraft probably reuses the event.pos BlockPos instance because it causes problems when trying to use it inside another thread
-        int bx = event.pos.getX();
-        int by = event.pos.getY();
-        int bz = event.pos.getZ();
-
-        int chunkX = bx >> 4;
-        int chunkZ = bz >> 4;
+        if (scanWorld != mc.level) return;
+        int bx = event.pos.getX(), by = event.pos.getY(), bz = event.pos.getZ();
+        int chunkX = bx >> 4, chunkZ = bz >> 4;
         long key = ChunkPos.pack(chunkX, chunkZ);
-
-        boolean added = blocks.get().contains(event.newState.getBlock()) && !blocks.get().contains(event.oldState.getBlock());
-        boolean removed = !added && !blocks.get().contains(event.newState.getBlock()) && blocks.get().contains(event.oldState.getBlock());
-
-        if (added || removed) {
-            workerThread.submit(() -> {
-                synchronized (chunks) {
-                    ESPChunk chunk = chunks.get(key);
-
-                    if (chunk == null) {
-                        chunk = new ESPChunk(chunkX, chunkZ);
-                        if (chunk.shouldBeDeleted()) return;
-
-                        chunks.put(key, chunk);
-                    }
-
-                    blockPos.set(bx, by, bz);
-
-                    if (added) chunk.add(blockPos);
-                    else chunk.remove(blockPos);
-
-                    // Update neighbour blocks
-                    for (int x = -1; x < 2; x++) {
-                        for (int z = -1; z < 2; z++) {
-                            for (int y = -1; y < 2; y++) {
-                                if (x == 0 && y == 0 && z == 0) continue;
-
-                                updateBlock(bx + x, by + y, bz + z);
-                            }
-                        }
-                    }
-                }
-            });
+        boolean selected = blocks.get().contains(event.newState.getBlock());
+        boolean wasSelected = blocks.get().contains(event.oldState.getBlock());
+        if (!selected && !wasSelected) return;
+        // Restart a partial scan so changes to already visited positions cannot be lost.
+        if (search != null && search.source.getPos().pack() == key) searchChunk(search.source);
+        ESPChunk chunk = chunks.get(key);
+        if (chunk == null) {
+            if (!selected) return;
+            chunk = new ESPChunk(chunkX, chunkZ);
+            if (chunk.shouldBeDeleted()) return;
+            chunks.put(key, chunk);
+        }
+        blockPos.set(bx, by, bz);
+        // Remove the old group before replacing even one selected block with another type.
+        chunk.remove(blockPos);
+        if (selected) chunk.add(blockPos);
+        for (int x = -1; x <= 1; x++) for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) {
+            if (x != 0 || y != 0 || z != 0) updateBlock(bx + x, by + y, bz + z);
         }
     }
 
     @EventHandler
     private void onPostTick(TickEvent.Post event) {
-        DimensionType dimension = mc.level.dimensionType();
-
-        if (lastDimension != dimension) onActivate();
-        lastDimension = dimension;
+        if (scanWorld != mc.level) onActivate();
+        if (search == null && !pending.isEmpty()) {
+            var entry = pending.entrySet().iterator();
+            ChunkAccess chunk = entry.next().getValue();
+            entry.remove();
+            if (live(chunk)) search = new ESPChunk.Search(chunk, blocks.get());
+        }
+        if (search == null) return;
+        if (!live(search.source)) { search = null; return; }
+        if (!search.advance(8192)) return;
+        int x = search.source.getPos().x(), z = search.source.getPos().z();
+        ESPChunk result = search.result;
+        search = null;
+        release(chunks.remove(ChunkPos.pack(x, z)));
+        if (result.size() > 0) { chunks.put(ChunkPos.pack(x, z), result); result.update(); }
+        updateChunk(x - 1, z); updateChunk(x + 1, z); updateChunk(x, z - 1); updateChunk(x, z + 1);
     }
 
     @EventHandler
@@ -239,12 +234,7 @@ public class BlockESP extends Module {
                 ESPChunk chunk = it.next();
 
                 if (chunk.shouldBeDeleted()) {
-                    workerThread.submit(() -> {
-                        for (ESPBlock block : chunk.blocks.values()) {
-                            block.group.remove(block, false);
-                            block.loaded = false;
-                        }
-                    });
+                    release(chunk);
 
                     it.remove();
                 } else chunk.render(event);

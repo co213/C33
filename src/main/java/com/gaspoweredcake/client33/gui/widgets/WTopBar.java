@@ -66,7 +66,7 @@ public abstract class WTopBar extends WHorizontalList {
             double pad = pad();
             Color color = getButtonColor(pressed || (mc.gui.screen() instanceof TabScreen tabScreen && tabScreen.tab == tab), mouseOver);
 
-            renderer.quad(x, y, width, height, color);
+            renderer.roundedQuad(x, y, width, height, theme.scale(5), color);
             renderer.text(tab.name, x + pad, y + pad, getNameColor(), false);
         }
     }

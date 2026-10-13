@@ -204,7 +204,7 @@ public class BookBot extends Module {
             }
 
             // Read each line of the file and construct a string with the needed line breaks
-            try (BufferedReader reader = new BufferedReader(new FileReader(file.get()))) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file.get(), java.nio.charset.StandardCharsets.UTF_8))) {
                 StringBuilder file = new StringBuilder();
 
                 String line;

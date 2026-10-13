@@ -57,6 +57,10 @@ public class TextSongDecoder extends SongDecoder {
                 continue;
             }
 
+            if (key < 0 || type < 0 || type >= NoteBlockInstrument.values().length) {
+                notebot.warning("Invalid tick or instrument at line %d", lineNumber + 1);
+                continue;
+            }
             Note note = new Note(NoteBlockInstrument.values()[type], val);
             notesMap.put(key, note);
         }

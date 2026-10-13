@@ -184,7 +184,7 @@ public class Waypoints extends System<Waypoints> implements Iterable<Waypoint> {
         waypoints.clear();
 
         for (Tag waypointTag : tag.getListOrEmpty("waypoints")) {
-            waypoints.add(new Waypoint(waypointTag));
+            if (waypointTag instanceof CompoundTag) waypoints.add(new Waypoint(waypointTag));
         }
 
         return this;
@@ -192,6 +192,7 @@ public class Waypoints extends System<Waypoints> implements Iterable<Waypoint> {
 
     private final class WaypointIterator implements Iterator<Waypoint> {
         private final Iterator<Waypoint> it = waypoints.iterator();
+        private Waypoint current;
 
         @Override
         public boolean hasNext() {
@@ -200,13 +201,14 @@ public class Waypoints extends System<Waypoints> implements Iterable<Waypoint> {
 
         @Override
         public Waypoint next() {
-            return it.next();
+            return current = it.next();
         }
 
         @Override
         public void remove() {
-            it.remove();
-            save();
+            if (current == null) throw new IllegalStateException();
+            Waypoints.this.remove(current);
+            current = null;
         }
     }
 }

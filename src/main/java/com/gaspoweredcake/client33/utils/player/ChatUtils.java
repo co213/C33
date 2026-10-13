@@ -132,7 +132,7 @@ public class ChatUtils {
     }
 
     public static void sendMsg(int id, @Nullable String prefixTitle, @Nullable ChatFormatting prefixColor, ChatFormatting messageColor, String messageContent, Object... args) {
-        MutableComponent message = formatMsg(String.format(messageContent, args), messageColor);
+        MutableComponent message = formatMsg(args.length == 0 ? messageContent : String.format(messageContent, args), messageColor);
         sendMsg(id, prefixTitle, prefixColor, message);
     }
 
