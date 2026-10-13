@@ -26,6 +26,8 @@ import com.gaspoweredcake.client33.utils.player.PlayerUtils;
 import com.gaspoweredcake.client33.utils.player.Rotations;
 import com.gaspoweredcake.client33.utils.world.TickRate;
 import com.gaspoweredcake.client33.utils.combat.CombatTelemetry;
+import com.gaspoweredcake.client33.utils.combat.TargetSelection;
+import com.gaspoweredcake.client33.utils.render.PathViewMath;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.tags.ItemTags;
@@ -54,6 +56,7 @@ import java.util.Set;
 public class KillAura extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
+    private final SettingGroup sgPresentation = settings.createGroup("Presentation");
     private final SettingGroup sgTiming = settings.createGroup("Timing");
 
     private final Setting<Boolean> serverCooldown = sgTiming.add(new BoolSetting.Builder()
@@ -95,6 +98,36 @@ public class KillAura extends Module {
         .visible(() -> rotation.get() != RotationMode.None)
         .build()
     );
+
+    private final Setting<Boolean> smoothAnimation = sgPresentation.add(new BoolSetting.Builder()
+        .name("smooth-combat-animation")
+        .description("Ease rendered third-person body/head turns. Sent aim and attack behavior are unchanged.")
+        .defaultValue(true).build());
+    private final Setting<Double> animationResponse = sgPresentation.add(new DoubleSetting.Builder()
+        .name("animation-response").description("Rendered turn response speed. Higher values follow sent aim more closely.")
+        .defaultValue(14).range(4, 30).sliderRange(4, 30).visible(smoothAnimation::get).build());
+
+    private long renderSample;
+    private Object renderPlayer;
+    public float renderedYaw, renderedPitch;
+
+    /** Updates presentation only; the server rotation and player angles are never changed here. */
+    public boolean sampleRenderRotation(float yaw, float pitch) {
+        if (!isActive() || !attacking || !smoothAnimation.get() || mc.player == null) {
+            renderSample = 0; renderPlayer = null; return false;
+        }
+        long now = System.nanoTime();
+        if (renderSample == 0 || renderPlayer != mc.player || now - renderSample > 500_000_000L) {
+            renderedYaw = yaw; renderedPitch = pitch;
+        }
+        double seconds = renderSample == 0 ? 0 : (now - renderSample) / 1e9;
+        renderSample = now; renderPlayer = mc.player;
+        if (!mc.isPaused()) {
+            renderedYaw = (float) PathViewMath.angle(renderedYaw, yaw, seconds, animationResponse.get());
+            renderedPitch = (float) PathViewMath.pitch(renderedPitch, pitch, seconds, animationResponse.get());
+        }
+        return true;
+    }
 
     private final Setting<Boolean> autoSwitch = sgGeneral.add(new BoolSetting.Builder()
         .name("auto-switch")
@@ -312,6 +345,7 @@ public class KillAura extends Module {
     @Override
     public void onActivate() {
         targets.clear();
+        renderSample = 0; renderPlayer = null;
         attacking = false;
         wasPathing = false;
         previousSlot = -1;
@@ -324,6 +358,7 @@ public class KillAura extends Module {
     @Override
     public void onDeactivate() {
         stopAttacking();
+        renderSample = 0; renderPlayer = null;
     }
 
     @EventHandler
@@ -523,12 +558,12 @@ public class KillAura extends Module {
         FakePlayerManager.forEach(player -> {
             if (!targets.contains(player) && entityCheck(player)) targets.add(player);
         });
-        targets.sort((left, right) -> {
+        var selected = TargetSelection.select(targets, maxTargets.get(), (left, right) -> {
             if (priority.get() != SortPriority.ClosestAngle) return priority.get().compare(left, right);
             return Double.compare(angleScore(left), angleScore(right));
-        });
-        if (keepTarget.get() && previous != null && targets.remove(previous)) targets.addFirst(previous);
-        if (targets.size() > maxTargets.get()) targets.subList(maxTargets.get(), targets.size()).clear();
+        }, keepTarget.get() ? previous : null);
+        targets.clear();
+        targets.addAll(selected);
     }
 
     private double angleScore(Entity entity) {

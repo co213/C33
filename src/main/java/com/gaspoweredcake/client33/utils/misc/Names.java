@@ -5,20 +5,18 @@
 
 package com.gaspoweredcake.client33.utils.misc;
 
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import com.gaspoweredcake.client33.Client33;
 import com.gaspoweredcake.client33.events.game.ResourcePacksReloadedEvent;
 import com.gaspoweredcake.client33.utils.PreInit;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
+import net.minecraft.locale.Language;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.StringUtil;
@@ -30,24 +28,36 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.block.Block;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
-import static com.gaspoweredcake.client33.Client33.mc;
+/** Plain display names. Cache only stable built-in objects, never server registry holders or stacks. */
+public final class Names {
+    private static volatile Caches caches = new Caches(Language.getInstance());
 
-public class Names {
-    private static final Map<MobEffect, String> statusEffectNames = new Reference2ObjectOpenHashMap<>(16);
-    private static final Map<Item, String> itemNames = new Reference2ObjectOpenHashMap<>(128);
-    private static final Map<Block, String> blockNames = new Reference2ObjectOpenHashMap<>(128);
-    private static final Map<ResourceKey<Enchantment>, String> enchantmentKeyNames = WeakHashMap.newWeakHashMap(16);
-    private static final Map<Holder<Enchantment>, String> enchantmentEntryNames = new Reference2ObjectOpenHashMap<>(16);
-    private static final Map<EntityType<?>, String> entityTypeNames = new Reference2ObjectOpenHashMap<>(64);
-    private static final Map<ParticleType<?>, String> particleTypesNames = new Reference2ObjectOpenHashMap<>(64);
-    private static final Map<Identifier, String> soundNames = HashMap.newHashMap(64);
+    private Names() {}
 
-    private Names() {
+    private static final class Caches {
+        final Language language;
+        final Map<MobEffect, String> effects = new ConcurrentHashMap<>();
+        final Map<Item, String> items = new ConcurrentHashMap<>();
+        final Map<Block, String> blocks = new ConcurrentHashMap<>();
+        final Map<EntityType<?>, String> entities = new ConcurrentHashMap<>();
+        final Map<ParticleType<?>, String> particles = new ConcurrentHashMap<>();
+        // Sound subtitles can change independently of the language on resource reload.
+        final Map<Identifier, String> sounds = new ConcurrentHashMap<>();
+
+        Caches(Language language) { this.language = language; }
+    }
+
+    private static Caches currentCaches() {
+        Caches current = caches;
+        Language language = Language.getInstance();
+        if (current.language == language) return current;
+        synchronized (Names.class) {
+            if (caches.language != language) caches = new Caches(language);
+            return caches;
+        }
     }
 
     @PreInit
@@ -56,72 +66,72 @@ public class Names {
     }
 
     @EventHandler
-    private static void onResourcePacksReloaded(ResourcePacksReloadedEvent event) {
-        statusEffectNames.clear();
-        itemNames.clear();
-        blockNames.clear();
-        enchantmentEntryNames.clear();
-        entityTypeNames.clear();
-        particleTypesNames.clear();
-        soundNames.clear();
+    private static synchronized void onResourcePacksReloaded(ResourcePacksReloadedEvent event) {
+        // Publish a new generation; an in-flight lookup cannot refill the new cache with old data.
+        caches = new Caches(Language.getInstance());
     }
 
     public static String get(MobEffect effect) {
-        return statusEffectNames.computeIfAbsent(effect, effect1 -> StringUtil.stripColor(I18n.get(effect1.getDescriptionId())));
+        return currentCaches().effects.computeIfAbsent(effect, value -> translated(value.getDescriptionId()));
     }
 
     public static String get(Item item) {
-        return itemNames.computeIfAbsent(item, item1 -> StringUtil.stripColor(I18n.get(item1.getDescriptionId())));
+        return currentCaches().items.computeIfAbsent(item, value -> translated(value.getDescriptionId()));
     }
 
     public static String get(Block block) {
-        return blockNames.computeIfAbsent(block, block1 -> StringUtil.stripColor(I18n.get(block1.getDescriptionId())));
+        return currentCaches().blocks.computeIfAbsent(block, value -> translated(value.getDescriptionId()));
     }
 
-    /**
-     * key -> entry, else key -> translation, else key -> identifier toString()
-     *
-     * @author Crosby
-     */
-    @SuppressWarnings("StringEquality")
     public static String get(ResourceKey<Enchantment> enchantment) {
-        return enchantmentKeyNames.computeIfAbsent(enchantment, enchantment1 -> Optional.ofNullable(Minecraft.getInstance().getConnection())
-            .map(ClientPacketListener::registryAccess)
-            .flatMap(registryManager -> registryManager.lookup(Registries.ENCHANTMENT))
-            .flatMap(registry -> registry.get(enchantment.identifier()))
-            .map(Names::get)
-            .orElseGet(() -> {
-                String key = "enchantment." + enchantment1.identifier().toLanguageKey();
-                String translated = I18n.get(key);
-                return translated == key ? enchantment1.identifier().toString() : translated;
-            }));
+        // Resolve against the current connection every time: datapacks can redefine the same key.
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.getConnection() != null) {
+            var entry = client.getConnection().registryAccess().lookup(Registries.ENCHANTMENT)
+                .flatMap(registry -> registry.get(enchantment.identifier()));
+            if (entry.isPresent()) return get(entry.get());
+        }
+        return enchantmentFallback(enchantment);
+    }
+
+    private static String enchantmentFallback(ResourceKey<Enchantment> enchantment) {
+        String key = "enchantment." + enchantment.identifier().toLanguageKey();
+        return Language.getInstance().has(key) ? translated(key) : enchantment.identifier().toString();
     }
 
     public static String get(Holder<Enchantment> enchantment) {
-        return enchantmentEntryNames.computeIfAbsent(enchantment, _ -> StringUtil.stripColor(enchantment.value().description().getString()));
+        if (!enchantment.isBound()) return enchantment.unwrapKey().map(Names::enchantmentFallback).orElse("Unknown enchantment");
+        return plain(enchantment.value().description().getString());
     }
 
     public static String get(EntityType<?> entityType) {
-        return entityTypeNames.computeIfAbsent(entityType, entityType1 -> StringUtil.stripColor(I18n.get(entityType1.getDescriptionId())));
+        return currentCaches().entities.computeIfAbsent(entityType, value -> translated(value.getDescriptionId()));
     }
 
     public static String get(ParticleType<?> type) {
-        return particleTypesNames.computeIfAbsent(type, _ -> StringUtils.capitalize(BuiltInRegistries.PARTICLE_TYPE.getKey(type).getPath().replace("_", " ")));
-    }
-
-    public static String getSoundName(Identifier id) {
-        return soundNames.computeIfAbsent(id, identifier -> {
-            WeighedSoundEvents soundSet = mc.getSoundManager().getSoundEvent(identifier);
-            if (soundSet == null) return identifier.getPath();
-
-            Component text = soundSet.getSubtitle();
-            if (text == null) return identifier.getPath();
-
-            return StringUtil.stripColor(text.getString());
+        return currentCaches().particles.computeIfAbsent(type, value -> {
+            Identifier id = BuiltInRegistries.PARTICLE_TYPE.getKey(value);
+            return id == null ? "Unknown particle" : readablePath(id);
         });
     }
 
+    public static String getSoundName(Identifier id) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) return readablePath(id); // Do not cache a pre-startup fallback.
+        Caches current = currentCaches();
+        WeighedSoundEvents sounds = client.getSoundManager().getSoundEvent(id);
+        if (sounds == null || sounds.getSubtitle() == null) return readablePath(id);
+        return current.sounds.computeIfAbsent(id, ignored -> plain(sounds.getSubtitle().getString()));
+    }
+
     public static String get(ItemStack stack) {
-        return stack.getHoverName().getString(); // pretty sure this is the same as it was
+        // Custom names and data components are mutable, so resolve the stack on each call.
+        return plain(stack.getHoverName().getString());
+    }
+
+    private static String translated(String key) { return plain(I18n.get(key)); }
+    private static String plain(String value) { return StringUtil.stripColor(value); }
+    private static String readablePath(Identifier id) {
+        return StringUtils.capitalize(id.getPath().replace('_', ' ').replace('.', ' ').replace('/', ' '));
     }
 }

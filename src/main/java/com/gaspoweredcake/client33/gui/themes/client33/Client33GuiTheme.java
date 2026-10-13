@@ -36,7 +36,12 @@ import com.mojang.blaze3d.platform.MacosUtil;
 import static com.gaspoweredcake.client33.Client33.mc;
 
 public class Client33GuiTheme extends GuiTheme {
-    private static final Color SCREEN_TINT = new Color(7, 7, 10, 200);
+    // HSV keeps surface brightness and accent saturation consistent across states.
+    private static final double SURFACE_HUE = 205;
+    private static final double ACCENT_HUE = 128;
+    private static final Color SCREEN_SKY = Color.fromHsv(205, 0.65, 0.30, 170);
+    private static final Color SCREEN_LEAF = Color.fromHsv(155, 0.65, 0.20, 185);
+    private static final Color SCREEN_SUN = Color.fromHsv(48, 0.50, 0.22, 180);
     private static final String SCREEN_MARK = "33";
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -97,57 +102,67 @@ public class Client33GuiTheme extends GuiTheme {
 
     // Colors
 
-    public final Setting<SettingColor> accentColor = color("accent", "Main color of the GUI.", new SettingColor(245, 66, 85));
-    public final Setting<SettingColor> checkboxColor = color("checkbox", "Color of checkbox.", new SettingColor(245, 66, 85));
-    public final Setting<SettingColor> plusColor = color("plus", "Color of plus button.", new SettingColor(245, 100, 110));
-    public final Setting<SettingColor> minusColor = color("minus", "Color of minus button.", new SettingColor(255, 91, 105));
-    public final Setting<SettingColor> favoriteColor = color("favorite", "Color of checked favorite button.", new SettingColor(224, 216, 105));
+    public final Setting<SettingColor> accentColor = color("accent", "Main color of the GUI.", hsv(ACCENT_HUE, 0.55, 0.96));
+    public final Setting<SettingColor> checkboxColor = color("checkbox", "Color of checkbox.", hsv(ACCENT_HUE, 0.55, 0.96));
+    public final Setting<SettingColor> plusColor = color("plus", "Color of plus button.", hsv(ACCENT_HUE, 0.48, 0.96));
+    public final Setting<SettingColor> minusColor = color("minus", "Color of minus button.", hsv(38, 0.42, 0.96));
+    public final Setting<SettingColor> favoriteColor = color("favorite", "Color of checked favorite button.", hsv(48, 0.60, 1));
+
+    public final Setting<SettingColor> skyAccent = color("sky-accent", "Sky blue accents on studio cards.", hsv(205, 0.48, 1));
 
     // Text
 
-    public final Setting<SettingColor> textColor = color(sgTextColors, "text", "Color of text.", new SettingColor(230, 237, 247));
-    public final Setting<SettingColor> textSecondaryColor = color(sgTextColors, "text-secondary-text", "Color of secondary text.", new SettingColor(157, 154, 166));
-    public final Setting<SettingColor> textHighlightColor = color(sgTextColors, "text-highlight", "Color of text highlighting.", new SettingColor(245, 66, 85, 110));
-    public final Setting<SettingColor> titleTextColor = color(sgTextColors, "title-text", "Color of title text.", new SettingColor(255, 229, 231));
-    public final Setting<SettingColor> loggedInColor = color(sgTextColors, "logged-in-text", "Color of logged in account name.", new SettingColor(245, 66, 85));
-    public final Setting<SettingColor> placeholderColor = color(sgTextColors, "placeholder", "Color of placeholder text.", new SettingColor(157, 154, 166, 145));
+    public final Setting<SettingColor> textColor = color(sgTextColors, "text", "Color of text.", hsv(48, 0.06, 0.98));
+    public final Setting<SettingColor> textSecondaryColor = color(sgTextColors, "text-secondary-text", "Color of secondary text.", hsv(185, 0.12, 0.85));
+    public final Setting<SettingColor> textHighlightColor = color(sgTextColors, "text-highlight", "Color of text highlighting.", hsv(ACCENT_HUE, 0.40, 0.90, 90));
+    public final Setting<SettingColor> titleTextColor = color(sgTextColors, "title-text", "Color of title text.", hsv(48, 0.28, 1));
+    public final Setting<SettingColor> loggedInColor = color(sgTextColors, "logged-in-text", "Color of logged in account name.", hsv(ACCENT_HUE, 0.55, 0.96));
+    public final Setting<SettingColor> placeholderColor = color(sgTextColors, "placeholder", "Color of placeholder text.", hsv(185, 0.12, 0.85));
 
     // Background
 
     public final ThreeStateColorSetting backgroundColor = new ThreeStateColorSetting(
             sgBackgroundColors,
             "background",
-            new SettingColor(22, 22, 27, 252),
-            new SettingColor(38, 36, 43, 252),
-            new SettingColor(62, 36, 44, 255)
+            hsv(190, 0.65, 0.19, 252),
+            hsv(185, 0.62, 0.26, 252),
+            hsv(155, 0.65, 0.32)
     );
 
-    public final Setting<SettingColor> moduleBackground = color(sgBackgroundColors, "module-background", "Color of module background when active.", new SettingColor(78, 27, 39, 240));
+    public final Setting<SettingColor> moduleBackground = color(sgBackgroundColors, "module-background", "Color of module background when active.", hsv(150, 0.65, 0.32, 250));
+
+    public final Setting<SettingColor> headerBackground = color(sgBackgroundColors, "header-background", "Elevated blue surface for window headers.", hsv(195, 0.65, 0.30));
+    public final Setting<SettingColor> insetBackground = color(sgBackgroundColors, "inset-background", "Deep blue surface for inset control groups.", hsv(175, 0.60, 0.12, 252));
+    public final Setting<SettingColor> insetOutline = color(sgBackgroundColors, "inset-outline", "Subtle blue border around inset control groups.", hsv(175, 0.60, 0.32));
+    public final Setting<SettingColor> windowShadow = color(sgBackgroundColors, "window-shadow", "Soft shadow beneath elevated windows.", hsv(SURFACE_HUE, 0.35, 0.02, 95));
+
+    public final Setting<SettingColor> headerHighlight = color(sgBackgroundColors, "header-highlight", "Sky blue light at the top of window headers.", hsv(195, 0.65, 0.36));
+    public final Setting<SettingColor> insetHighlight = color(sgBackgroundColors, "inset-highlight", "Soft teal light across the top of cards.", hsv(165, 0.60, 0.23));
 
     // Outline
 
     public final ThreeStateColorSetting outlineColor = new ThreeStateColorSetting(
             sgOutline,
             "outline",
-            new SettingColor(55, 49, 58),
-            new SettingColor(151, 59, 75),
-            new SettingColor(245, 66, 85)
+            hsv(190, 0.52, 0.42),
+            hsv(ACCENT_HUE, 0.48, 0.68),
+            hsv(ACCENT_HUE, 0.55, 0.96)
     );
 
     // Separator
 
-    public final Setting<SettingColor> separatorText = color(sgSeparator, "separator-text", "Color of separator text", new SettingColor(231, 210, 219));
-    public final Setting<SettingColor> separatorCenter = color(sgSeparator, "separator-center", "Center color of separators.", new SettingColor(159, 77, 95, 170));
-    public final Setting<SettingColor> separatorEdges = color(sgSeparator, "separator-edges", "Color of separator edges.", new SettingColor(57, 47, 59, 50));
+    public final Setting<SettingColor> separatorText = color(sgSeparator, "separator-text", "Color of separator text", hsv(48, 0.26, 0.95));
+    public final Setting<SettingColor> separatorCenter = color(sgSeparator, "separator-center", "Center color of separators.", hsv(ACCENT_HUE, 0.45, 0.70, 190));
+    public final Setting<SettingColor> separatorEdges = color(sgSeparator, "separator-edges", "Color of separator edges.", hsv(205, 0.50, 0.55, 85));
 
     // Scrollbar
 
     public final ThreeStateColorSetting scrollbarColor = new ThreeStateColorSetting(
             sgScrollbar,
             "Scrollbar",
-            new SettingColor(57, 47, 59, 200),
-            new SettingColor(151, 52, 76, 220),
-            new SettingColor(245, 66, 85, 235)
+            hsv(205, 0.50, 0.58, 220),
+            hsv(ACCENT_HUE, 0.28, 0.60, 220),
+            hsv(ACCENT_HUE, 0.48, 0.86, 235)
     );
 
     // Slider
@@ -155,26 +170,26 @@ public class Client33GuiTheme extends GuiTheme {
     public final ThreeStateColorSetting sliderHandle = new ThreeStateColorSetting(
             sgSlider,
             "slider-handle",
-            new SettingColor(245, 66, 85),
-            new SettingColor(255, 153, 163),
-            new SettingColor(255, 229, 231)
+            hsv(ACCENT_HUE, 0.55, 0.96),
+            hsv(48, 0.32, 0.98),
+            hsv(48, 0.28, 1)
     );
 
-    public final Setting<SettingColor> sliderLeft = color(sgSlider, "slider-left", "Color of slider left part.", new SettingColor(203, 48, 68));
-    public final Setting<SettingColor> sliderRight = color(sgSlider, "slider-right", "Color of slider right part.", new SettingColor(48, 42, 51));
+    public final Setting<SettingColor> sliderLeft = color(sgSlider, "slider-left", "Color of slider left part.", hsv(ACCENT_HUE, 0.60, 0.88));
+    public final Setting<SettingColor> sliderRight = color(sgSlider, "slider-right", "Color of slider right part.", hsv(195, 0.60, 0.30));
 
     // Starscript
 
-    private final Setting<SettingColor> starscriptText = color(sgStarscript, "starscript-text", "Color of text in Starscript code.", new SettingColor(196, 223, 206));
-    private final Setting<SettingColor> starscriptBraces = color(sgStarscript, "starscript-braces", "Color of braces in Starscript code.", new SettingColor(117, 215, 151));
-    private final Setting<SettingColor> starscriptParenthesis = color(sgStarscript, "starscript-parenthesis", "Color of parenthesis in Starscript code.", new SettingColor(156, 198, 172));
-    private final Setting<SettingColor> starscriptDots = color(sgStarscript, "starscript-dots", "Color of dots in starscript code.", new SettingColor(153, 184, 163));
-    private final Setting<SettingColor> starscriptCommas = color(sgStarscript, "starscript-commas", "Color of commas in starscript code.", new SettingColor(153, 184, 163));
-    private final Setting<SettingColor> starscriptOperators = color(sgStarscript, "starscript-operators", "Color of operators in Starscript code.", new SettingColor(103, 226, 202));
-    private final Setting<SettingColor> starscriptStrings = color(sgStarscript, "starscript-strings", "Color of strings in Starscript code.", new SettingColor(222, 207, 131));
-    private final Setting<SettingColor> starscriptNumbers = color(sgStarscript, "starscript-numbers", "Color of numbers in Starscript code.", new SettingColor(134, 195, 224));
-    private final Setting<SettingColor> starscriptKeywords = color(sgStarscript, "starscript-keywords", "Color of keywords in Starscript code.", new SettingColor(255, 128, 133));
-    private final Setting<SettingColor> starscriptAccessedObjects = color(sgStarscript, "starscript-accessed-objects", "Color of accessed objects (before a dot) in Starscript code.", new SettingColor(167, 245, 190));
+    private final Setting<SettingColor> starscriptText = color(sgStarscript, "starscript-text", "Color of text in Starscript code.", hsv(145, 0.12, 0.88));
+    private final Setting<SettingColor> starscriptBraces = color(sgStarscript, "starscript-braces", "Color of braces in Starscript code.", hsv(145, 0.36, 0.86));
+    private final Setting<SettingColor> starscriptParenthesis = color(sgStarscript, "starscript-parenthesis", "Color of parenthesis in Starscript code.", hsv(145, 0.20, 0.80));
+    private final Setting<SettingColor> starscriptDots = color(sgStarscript, "starscript-dots", "Color of dots in starscript code.", hsv(145, 0.16, 0.76));
+    private final Setting<SettingColor> starscriptCommas = color(sgStarscript, "starscript-commas", "Color of commas in starscript code.", hsv(145, 0.16, 0.76));
+    private final Setting<SettingColor> starscriptOperators = color(sgStarscript, "starscript-operators", "Color of operators in Starscript code.", hsv(170, 0.36, 0.88));
+    private final Setting<SettingColor> starscriptStrings = color(sgStarscript, "starscript-strings", "Color of strings in Starscript code.", hsv(42, 0.32, 0.88));
+    private final Setting<SettingColor> starscriptNumbers = color(sgStarscript, "starscript-numbers", "Color of numbers in Starscript code.", hsv(205, 0.32, 0.88));
+    private final Setting<SettingColor> starscriptKeywords = color(sgStarscript, "starscript-keywords", "Color of keywords in Starscript code.", hsv(ACCENT_HUE, 0.48, 0.96));
+    private final Setting<SettingColor> starscriptAccessedObjects = color(sgStarscript, "starscript-accessed-objects", "Color of accessed objects (before a dot) in Starscript code.", hsv(145, 0.24, 0.92));
 
     public Client33GuiTheme() {
         super("33");
@@ -184,12 +199,29 @@ public class Client33GuiTheme extends GuiTheme {
 
     @Override
     public void renderBackground(GuiRenderer renderer, double width, double height) {
-        renderer.quad(0, 0, width, height, SCREEN_TINT);
+        renderer.quad(0, 0, width, height, SCREEN_SKY, SCREEN_LEAF, SCREEN_LEAF, SCREEN_SUN);
 
         double line = scale(2);
-        renderer.quad(0, 0, width, line, accentColor.get());
+        renderer.quad(0, 0, width, line, accentColor.get(), favoriteColor.get());
 
         renderer.text(SCREEN_MARK, width - textWidth(SCREEN_MARK) - scale(36), height - textHeight() - scale(9), textSecondaryColor.get(), false);
+    }
+
+    /** Apply the current nature palette to saved colors without changing layout or modules. */
+    public void applyNaturalColors() {
+        for (SettingGroup group : settings) {
+            for (Setting<?> setting : group) {
+                if (setting instanceof ColorSetting) setting.reset();
+            }
+        }
+    }
+
+    private static SettingColor hsv(double hue, double saturation, double brightness) {
+        return hsv(hue, saturation, brightness, 255);
+    }
+
+    private static SettingColor hsv(double hue, double saturation, double brightness, int alpha) {
+        return Color.fromHsv(hue, saturation, brightness, alpha).toSetting();
     }
 
     private Setting<SettingColor> color(SettingGroup group, String name, String description, SettingColor color) {

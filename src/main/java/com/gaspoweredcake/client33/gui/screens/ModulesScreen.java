@@ -8,6 +8,8 @@ package com.gaspoweredcake.client33.gui.screens;
 import com.mojang.blaze3d.platform.MacosUtil;
 import com.gaspoweredcake.client33.events.client33.ActiveModulesChangedEvent;
 import com.gaspoweredcake.client33.gui.GuiTheme;
+import com.gaspoweredcake.client33.gui.GuiThemes;
+import com.gaspoweredcake.client33.gui.themes.client33.Client33GuiTheme;
 import com.gaspoweredcake.client33.gui.tabs.TabScreen;
 import com.gaspoweredcake.client33.gui.tabs.Tabs;
 import com.gaspoweredcake.client33.gui.widgets.WLabel;
@@ -74,6 +76,15 @@ public class ModulesScreen extends TabScreen {
             search.setFocused(true);
             refreshResults();
         };
+
+        if (theme instanceof Client33GuiTheme nature) {
+            WButton natural = toolbar.add(theme.button("Natural colors")).widget();
+            natural.tooltip = "Apply fresh leaf green, sky blue and sunshine yellow to all GUI colors. Replaces saved colors.";
+            natural.action = () -> {
+                nature.applyNaturalColors();
+                GuiThemes.save();
+            };
+        }
 
         WHorizontalList body = window.add(theme.horizontalList()).expandX().widget();
         body.spacing = 12;
@@ -214,7 +225,7 @@ public class ModulesScreen extends TabScreen {
         toggle(effects, "Target crown", combat.crown);
         effects.add(theme.button("All combat visuals")).expandX().pad(12).widget().action = () -> mc.gui.setScreen(theme.moduleScreen(combat));
         grid.row();
-        WPanel looks = grid.add(new WPanel()).expandX().top().widget();
+        WPanel looks = grid.add(new WPanel(WPanel.Tone.Sun)).expandX().top().widget();
         looks.add(theme.label("03 / LOOK PRESETS")).pad(12);
         for (String name : new String[]{"Crimson hologram", "Arctic constellation", "Minimal telemetry"}) {
             looks.add(theme.button(name)).expandX().padHorizontal(12).padBottom(6).widget().action = () -> {
@@ -230,15 +241,19 @@ public class ModulesScreen extends TabScreen {
         }
         looks.add(theme.label("Changes appearance only. Enable above.", 280).color(theme.textSecondaryColor())).pad(12);
         if (!wide) grid.row();
-        WPanel scene = grid.add(new WPanel()).expandX().top().widget();
+        WPanel scene = grid.add(new WPanel(WPanel.Tone.Sky)).expandX().top().widget();
         scene.add(theme.label("04 / SCENE & CAMERA")).pad(12);
         for (String name : new String[]{"ambience", "fullbright", "camera-tweaks", "free-look", "hand-view"}) {
             Module module = Modules.get().get(name);
             if (module != null) scene.add(theme.button(module.title + "  >")).expandX().padHorizontal(12).padBottom(6).widget().action = () -> mc.gui.setScreen(theme.moduleScreen(module));
         }
+        scene.add(theme.button("Minecraft tuning  >")).expandX().padHorizontal(12).padBottom(6).widget().action = () ->
+            mc.gui.setScreen(new MinecraftTuningScreen(theme));
+        scene.add(theme.button("Import & build a building  >")).expandX().padHorizontal(12).padBottom(6).widget().action = () ->
+            mc.gui.setScreen(new SchematicBuildScreen(theme));
         scene.add(theme.label("Fine-tune your world, camera and hands.", 280).color(theme.textSecondaryColor())).pad(12);
         grid.row();
-        WPanel recon = grid.add(new WPanel()).expandX().top().widget();
+        WPanel recon = grid.add(new WPanel(WPanel.Tone.Leaf)).expandX().top().widget();
         recon.add(theme.label("05 / WORLD INTELLIGENCE")).pad(12);
         for (String name : new String[]{"storage-esp", "faction-intel", "movement-heatmap", "structure-esp"}) {
             Module module = Modules.get().get(name);
@@ -246,7 +261,7 @@ public class ModulesScreen extends TabScreen {
         }
         recon.add(theme.label("Loaded data, source labels and expiring observations.", 280).color(theme.textSecondaryColor())).pad(12);
         if (!wide) grid.row();
-        WPanel combatTools = grid.add(new WPanel()).expandX().top().widget();
+        WPanel combatTools = grid.add(new WPanel(WPanel.Tone.Sun)).expandX().top().widget();
         combatTools.add(theme.label("06 / PVP CONTROL")).pad(12);
         for (String name : new String[]{"kill-aura", "shield-predict", "crystal-aura", "auto-totem"}) {
             Module module = Modules.get().get(name);
@@ -256,7 +271,7 @@ public class ModulesScreen extends TabScreen {
     }
 
     private WPanel studioCard(WTable grid, Module module, String title, boolean combat) {
-        WPanel card = grid.add(new WPanel()).expandX().top().widget();
+        WPanel card = grid.add(new WPanel(combat ? WPanel.Tone.Sun : WPanel.Tone.Sky)).expandX().top().widget();
         card.add(theme.label(title)).pad(12);
         card.add(new WVisualPreview(combat)).expandX().padHorizontal(8);
         card.add(theme.module(module)).expandX().pad(8);

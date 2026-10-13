@@ -13,7 +13,7 @@ import com.gaspoweredcake.client33.gui.widgets.WQuad;
 import com.gaspoweredcake.client33.gui.widgets.WWidget;
 import com.gaspoweredcake.client33.gui.widgets.containers.WHorizontalList;
 import com.gaspoweredcake.client33.gui.widgets.containers.WTable;
-import com.gaspoweredcake.client33.gui.widgets.input.WIntEdit;
+import com.gaspoweredcake.client33.gui.widgets.input.WDoubleEdit;
 import com.gaspoweredcake.client33.gui.widgets.pressable.WButton;
 import com.gaspoweredcake.client33.gui.widgets.pressable.WCheckbox;
 import com.gaspoweredcake.client33.settings.Setting;
@@ -26,7 +26,7 @@ import net.minecraft.util.Mth;
 import static com.gaspoweredcake.client33.Client33.mc;
 
 public class ColorSettingScreen extends WindowScreen {
-    private static final Color[] HUE_COLORS = {new Color(255, 0, 0), new Color(255, 255, 0), new Color(0, 255, 0), new Color(0, 255, 255), new Color(0, 0, 255), new Color(255, 0, 255), new Color(255, 0, 0)};
+    private static final Color[] HUE_COLORS = {Color.fromHsv(0, 1, 1), Color.fromHsv(60, 1, 1), Color.fromHsv(120, 1, 1), Color.fromHsv(180, 1, 1), Color.fromHsv(240, 1, 1), Color.fromHsv(300, 1, 1), Color.fromHsv(360, 1, 1)};
     private static final Color WHITE = new Color(255, 255, 255);
     private static final Color BLACK = new Color(0, 0, 0);
 
@@ -39,7 +39,7 @@ public class ColorSettingScreen extends WindowScreen {
     private WBrightnessQuad brightnessQuad;
     private WHueQuad hueQuad;
 
-    private WIntEdit rItb, gItb, bItb, aItb;
+    private WDoubleEdit hueEdit, saturationEdit, brightnessEdit, opacityEdit;
     private WCheckbox rainbow;
 
     public ColorSettingScreen(GuiTheme theme, Setting<SettingColor> setting) {
@@ -57,27 +57,26 @@ public class ColorSettingScreen extends WindowScreen {
 
         hueQuad = add(new WHueQuad()).expandX().widget();
 
-        // RGBA
-        WTable rgbaTable = add(theme.table()).expandX().widget();
-
-        rgbaTable.add(theme.label("R:"));
-        rItb = rgbaTable.add(theme.intEdit(setting.get().r, 0, 255, 0, 255, false)).expandX().widget();
-        rItb.action = this::rgbaChanged;
-        rgbaTable.row();
-
-        rgbaTable.add(theme.label("G:"));
-        gItb = rgbaTable.add(theme.intEdit(setting.get().g, 0, 255, 0, 255, false)).expandX().widget();
-        gItb.action = this::rgbaChanged;
-        rgbaTable.row();
-
-        rgbaTable.add(theme.label("B:"));
-        bItb = rgbaTable.add(theme.intEdit(setting.get().b, 0, 255, 0, 255, false)).expandX().widget();
-        bItb.action = this::rgbaChanged;
-        rgbaTable.row();
-
-        rgbaTable.add(theme.label("A:"));
-        aItb = rgbaTable.add(theme.intEdit(setting.get().a, 0, 255, 0, 255, false)).expandX().widget();
-        aItb.action = this::rgbaChanged;
+        // HSV / HSB: hue in degrees, saturation, brightness and opacity in percent.
+        double[] hsv = setting.get().toHsv();
+        WTable table = add(theme.table()).expandX().widget();
+        hueEdit = component(table, "Hue (°):", hsv[0], 360);
+        saturationEdit = component(table, "Saturation (%):", hsv[1] * 100, 100);
+        brightnessEdit = component(table, "Brightness (%):", hsv[2] * 100, 100);
+        opacityEdit = component(table, "Opacity (%):", setting.get().a / 255.0 * 100, 100);
+        hueEdit.action = saturationEdit.action = brightnessEdit.action = () -> {
+            hueQuad.hueAngle = hueEdit.get();
+            brightnessQuad.saturation = saturationEdit.get() / 100;
+            brightnessQuad.value = brightnessEdit.get() / 100;
+            updateHandles();
+            hsvChanged();
+        };
+        opacityEdit.action = () -> {
+            setting.get().a((int) Math.round(opacityEdit.get() / 100 * 255));
+            displayQuad.color.set(setting.get());
+            setting.onChanged();
+            callAction();
+        };
 
         // Rainbow
         WHorizontalList rainbowList = add(theme.horizontalList()).expandX().widget();
@@ -115,18 +114,32 @@ public class ColorSettingScreen extends WindowScreen {
         brightnessQuad.calculateFromColor(setting.get(), false);
     }
 
+    private WDoubleEdit component(WTable table, String label, double value, double max) {
+        table.add(theme.label(label));
+        WDoubleEdit edit = table.add(theme.doubleEdit(value, 0, max, 0, max, 1, false)).expandX().widget();
+        table.row();
+        return edit;
+    }
+
+    private void updateHandles() {
+        hueQuad.handleX = hueQuad.hueAngle / 360 * hueQuad.width;
+        brightnessQuad.handleX = brightnessQuad.saturation * brightnessQuad.width;
+        brightnessQuad.handleY = (1 - brightnessQuad.value) * brightnessQuad.height;
+    }
+
+    private void updateFields() {
+        hueEdit.set(hueQuad.hueAngle);
+        saturationEdit.set(brightnessQuad.saturation * 100);
+        brightnessEdit.set(brightnessQuad.value * 100);
+        opacityEdit.set(setting.get().a / 255.0 * 100);
+    }
+
     private void setFromSetting() {
-        SettingColor c = setting.get();
-
-        if (c.r != rItb.get()) rItb.set(c.r);
-        if (c.g != gItb.get()) gItb.set(c.g);
-        if (c.b != bItb.get()) bItb.set(c.b);
-        if (c.a != aItb.get()) aItb.set(c.a);
-        rainbow.checked = c.rainbow;
-
+        rainbow.checked = setting.get().rainbow;
         displayQuad.color.set(setting.get());
         hueQuad.calculateFromSetting(true);
         brightnessQuad.calculateFromColor(setting.get(), true);
+        updateFields();
     }
 
     private void callAction() {
@@ -139,100 +152,11 @@ public class ColorSettingScreen extends WindowScreen {
         if (setting.get().rainbow) setFromSetting();
     }
 
-    private void rgbaChanged() {
-        Color c = setting.get();
-
-        c.r = rItb.get();
-        c.g = gItb.get();
-        c.b = bItb.get();
-        c.a = aItb.get();
-
-        c.validate();
-
-        if (c.r != rItb.get()) rItb.set(c.r);
-        if (c.g != gItb.get()) gItb.set(c.g);
-        if (c.b != bItb.get()) bItb.set(c.b);
-        if (c.a != aItb.get()) aItb.set(c.a);
-
-        displayQuad.color.set(c);
-        hueQuad.calculateFromSetting(true);
-        brightnessQuad.calculateFromColor(setting.get(), true);
-
-        setting.onChanged();
-        callAction();
-    }
-
     private void hsvChanged() {
-        double hh, p, q, t, ff;
-        int i;
-
-        double r = 0;
-        double g = 0;
-        double b = 0;
-        boolean calculated = false;
-
-        if (brightnessQuad.saturation <= 0.0) {
-            r = brightnessQuad.value;
-            g = brightnessQuad.value;
-            b = brightnessQuad.value;
-            calculated = true;
-        }
-
-        if (!calculated) {
-            hh = hueQuad.hueAngle;
-            if (hh >= 360.0) hh = 0.0;
-            hh /= 60.0;
-            i = (int) hh;
-            ff = hh - i;
-            p = brightnessQuad.value * (1.0 - brightnessQuad.saturation);
-            q = brightnessQuad.value * (1.0 - (brightnessQuad.saturation * ff));
-            t = brightnessQuad.value * (1.0 - (brightnessQuad.saturation * (1.0 - ff)));
-
-            switch (i) {
-                case 0 -> {
-                    r = brightnessQuad.value;
-                    g = t;
-                    b = p;
-                }
-                case 1 -> {
-                    r = q;
-                    g = brightnessQuad.value;
-                    b = p;
-                }
-                case 2 -> {
-                    r = p;
-                    g = brightnessQuad.value;
-                    b = t;
-                }
-                case 3 -> {
-                    r = p;
-                    g = q;
-                    b = brightnessQuad.value;
-                }
-                case 4 -> {
-                    r = t;
-                    g = p;
-                    b = brightnessQuad.value;
-                }
-                default -> {
-                    r = brightnessQuad.value;
-                    g = p;
-                    b = q;
-                }
-            }
-        }
-
-        Color c = setting.get();
-
-        c.r = (int) (r * 255);
-        c.g = (int) (g * 255);
-        c.b = (int) (b * 255);
-        c.validate();
-
-        rItb.set(c.r);
-        gItb.set(c.g);
-        bItb.set(c.b);
-
+        SettingColor c = setting.get();
+        // Keep the selected hue at zero saturation/brightness, and preserve alpha/rainbow.
+        c.set(Color.fromHsv(hueQuad.hueAngle, brightnessQuad.saturation, brightnessQuad.value, c.a));
+        updateFields();
         displayQuad.color.set(c);
         setting.onChanged();
         callAction();
@@ -262,14 +186,9 @@ public class ColorSettingScreen extends WindowScreen {
         }
 
         void calculateFromColor(Color c, boolean calculateNow) {
-            double min = Math.min(Math.min(c.r, c.g), c.b);
-            double max = Math.max(Math.max(c.r, c.g), c.b);
-            double delta = max - min;
-
-            value = max / 255;
-
-            if (delta == 0) saturation = 0;
-            else saturation = delta / max;
+            double[] hsv = c.toHsv();
+            saturation = hsv[1];
+            value = hsv[2];
 
             if (calculateNow) {
                 handleX = saturation * width;
@@ -330,8 +249,8 @@ public class ColorSettingScreen extends WindowScreen {
         }
 
         void handleMoved() {
-            double handleXPercentage = handleX / width;
-            double handleYPercentage = handleY / height;
+            double handleXPercentage = Mth.clamp(handleX / width, 0, 1);
+            double handleYPercentage = Mth.clamp(handleY / height, 0, 1);
 
             saturation = handleXPercentage;
             value = 1 - handleYPercentage;
@@ -442,41 +361,9 @@ public class ColorSettingScreen extends WindowScreen {
         }
 
         void calculateFromSetting(boolean calculateNow) {
-            Color c = setting.get();
-            boolean calculated = false;
-
-            double min, max, delta;
-
-            min = Math.min(c.r, c.g);
-            min = min < c.b ? min : c.b;
-
-            max = Math.max(c.r, c.g);
-            max = max > c.b ? max : c.b;
-
-            delta = max - min;
-            if (delta < 0.00001) {
-                hueAngle = 0;
-                calculated = true;
-            }
-
-            if (!calculated) {
-                if (max <= 0.0) { // NOTE: if Max is == 0, this divide would cause a crash
-                    // if max is 0, then r = g = b = 0
-                    // s = 0, h is undefined
-                    hueAngle = 0;
-                    calculated = true;
-                }
-
-                if (!calculated) {
-                    if (c.r >= max) hueAngle = (c.g - c.b) / delta; // between yellow & magenta
-                    else if (c.g >= max) hueAngle = 2.0 + (c.b - c.r) / delta; // between cyan & yellow
-                    else hueAngle = 4.0 + (c.r - c.g) / delta; // between magenta & cyan
-
-                    hueAngle *= 60.0; // degrees
-
-                    if (hueAngle < 0.0) hueAngle += 360.0;
-                }
-            }
+            double[] hsv = setting.get().toHsv();
+            // Hue is undefined for gray/black; retain it so saturation can be restored.
+            if (hsv[1] > 0) hueAngle = hsv[0];
 
             if (calculateNow) {
                 double huePercentage = hueAngle / 360;
@@ -499,59 +386,7 @@ public class ColorSettingScreen extends WindowScreen {
         }
 
         void calculateColor() {
-            double hh, p, q, t, ff;
-            int i;
-
-            hh = hueAngle;
-            if (hh >= 360.0) hh = 0.0;
-            hh /= 60.0;
-            i = (int) hh;
-            ff = hh - i;
-            p = 1 * (1.0 - 1);
-            q = 1 * (1.0 - (1 * ff));
-            t = 1 * (1.0 - (1 * (1.0 - ff)));
-
-            double r;
-            double g;
-            double b;
-
-            switch (i) {
-                case 0 -> {
-                    r = 1;
-                    g = t;
-                    b = p;
-                }
-                case 1 -> {
-                    r = q;
-                    g = 1;
-                    b = p;
-                }
-                case 2 -> {
-                    r = p;
-                    g = 1;
-                    b = t;
-                }
-                case 3 -> {
-                    r = p;
-                    g = q;
-                    b = 1;
-                }
-                case 4 -> {
-                    r = t;
-                    g = p;
-                    b = 1;
-                }
-                default -> {
-                    r = 1;
-                    g = p;
-                    b = q;
-                }
-            }
-
-            color.r = (int) (r * 255);
-            color.g = (int) (g * 255);
-            color.b = (int) (b * 255);
-            color.validate();
+            color.set(Color.fromHsv(hueAngle, 1, 1));
         }
 
         @Override
@@ -601,7 +436,7 @@ public class ColorSettingScreen extends WindowScreen {
         }
 
         void calculateHueAngleFromHandleX() {
-            double handleXPercentage = handleX / (width - 4);
+            double handleXPercentage = Mth.clamp(handleX / width, 0, 1);
             hueAngle = handleXPercentage * 360;
         }
 

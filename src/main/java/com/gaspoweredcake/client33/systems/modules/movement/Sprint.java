@@ -6,7 +6,9 @@
 package com.gaspoweredcake.client33.systems.modules.movement;
 
 import com.gaspoweredcake.client33.events.packets.PacketEvent;
-import com.gaspoweredcake.client33.events.world.TickEvent;
+import com.gaspoweredcake.client33.events.entity.player.SendMovementPacketsEvent;
+import com.gaspoweredcake.client33.mixin.LocalPlayerAccessor;
+import com.gaspoweredcake.client33.utils.movement.SprintPolicy;
 import com.gaspoweredcake.client33.settings.BoolSetting;
 import com.gaspoweredcake.client33.settings.EnumSetting;
 import com.gaspoweredcake.client33.settings.Setting;
@@ -17,7 +19,7 @@ import com.gaspoweredcake.client33.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.client.player.LocalPlayer;
 
 public class Sprint extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -29,7 +31,7 @@ public class Sprint extends Module {
 
     public final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
         .name("sprint-mode")
-        .description("What mode of sprinting.")
+        .description("Strict follows Minecraft sprint rules. Rage also allows sideways and backwards sprinting.")
         .defaultValue(Mode.Strict)
         .build()
     );
@@ -43,14 +45,14 @@ public class Sprint extends Module {
 
     private final Setting<Boolean> unsprintOnHit = sgGeneral.add(new BoolSetting.Builder()
         .name("unsprint-on-hit")
-        .description("Whether to stop sprinting before attacking, to ensure you get crits and sweep attacks.")
+        .description("Stops sprinting before attacks. Critical and sweep attacks still require their normal Minecraft conditions.")
         .defaultValue(false)
         .build()
     );
 
     public final Setting<Boolean> unsprintInWater = sgGeneral.add(new BoolSetting.Builder()
         .name("unsprint-in-water")
-        .description("Whether to stop sprinting when in water.")
+        .description("Stops Rage sprinting in water. Strict follows Minecraft swimming rules.")
         .defaultValue(true)
         .visible(() -> mode.get() == Mode.Rage)
         .build()
@@ -68,49 +70,61 @@ public class Sprint extends Module {
         super(Categories.Movement, "sprint", "Automatically sprints.");
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    private void onTickMovement(TickEvent.Post event) {
-        if (unsprintInWater.get() && mc.player.isInWater()) return;
+    private LocalPlayer owner;
 
+    @Override
+    public void onDeactivate() {
+        // Release automatic sprint without overriding a held manual sprint key.
+        if (owner != null && owner == mc.player && !mc.options.keySprint.isDown()) owner.setSprinting(false);
+        owner = null;
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    private void onMovement(SendMovementPacketsEvent.Pre event) {
+        if (mc.player == null || mc.level == null) return;
+        owner = mc.player;
+        // Input and vanilla movement have updated; sendPosition synchronizes this state once.
         mc.player.setSprinting(shouldSprint());
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler(priority = EventPriority.LOWEST)
     private void onPacketSend(PacketEvent.Send event) {
-        if (!unsprintOnHit.get()) return;
-        if (!(event.packet instanceof ServerboundAttackPacket)) return;
+        if (event.isCancelled() || !unsprintOnHit.get() || !(event.packet instanceof ServerboundAttackPacket)) return;
+        if (mc.player == null || mc.level == null || mc.getConnection() == null) return;
+        if (event.connection != mc.getConnection().getConnection()) return;
 
-        mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
+        owner = mc.player;
         mc.player.setSprinting(false);
-    }
-
-    @EventHandler
-    private void onPacketSent(PacketEvent.Sent event) {
-        if (!unsprintOnHit.get() || !keepSprint.get()) return;
-        if (!(event.packet instanceof ServerboundAttackPacket)) return;
-        if (!shouldSprint() || mc.player.isSprinting()) return;
-
-        mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_SPRINTING));
-        mc.player.setSprinting(true);
+        // Synchronize using vanilla's last-sent state, even if local sprint already stopped.
+        // No immediate restart: the local attack must finish with sprint disabled.
+        ((LocalPlayerAccessor) mc.player).client33$sendIsSprintingIfNeeded();
     }
 
     public boolean shouldSprint() {
-        if (mc.gui.screen() != null && !Modules.get().get(GUIMove.class).sprint.get()) return false;
-
-        float movement = mode.get() == Mode.Rage
-            ? (Math.abs(mc.player.zza) + Math.abs(mc.player.xxa))
-            : mc.player.zza;
-
-        if (movement <= (mc.player.isUnderWater() ? 1.0E-5F : 0.8)) {
-            if (mode.get() == Mode.Strict || !permaSprint.get()) return false;
+        LocalPlayer player = mc.player;
+        if (!isActive() || player == null || mc.level == null || !player.isAlive() || player.isSpectator()) return false;
+        if (mc.gui.screen() != null) {
+            GUIMove guiMove = Modules.get().get(GUIMove.class);
+            if (!guiMove.isActive() || !guiMove.sprint.get() || guiMove.skip()) return false;
         }
+        if (unsprintInWater() && player.isInWater()) return false;
 
-        boolean strictSprint = !(mc.player.isInShallowWater())
-            && !mc.player.isMobilityRestricted()
-            && mc.player.isPassenger() ? (mc.player.getVehicle().canSprint() && mc.player.getVehicle().isLocalInstanceAuthoritative()) : mc.player.getFoodData().hasEnoughFood()
-                                                                                                                                         && (!mc.player.horizontalCollision || mc.player.minorHorizontalCollision);
-
-        return isActive() && (mode.get() == Mode.Rage || strictSprint);
+        LocalPlayerAccessor vanilla = (LocalPlayerAccessor) player;
+        boolean strict = mode.get() == Mode.Strict;
+        boolean eligible;
+        if (strict) {
+            // Preserve the game's different start, run and swim continuation rules.
+            eligible = player.isSprinting()
+                ? !(player.isSwimming() ? vanilla.client33$shouldStopSwimSprinting() : vanilla.client33$shouldStopRunSprinting())
+                : vanilla.client33$canStartSprinting();
+        } else {
+            eligible = vanilla.client33$isSprintingPossible(player.getAbilities().flying || player.isSwimming())
+                && (!player.horizontalCollision || player.minorHorizontalCollision)
+                && !vanilla.client33$isSlowDueToUsingItem()
+                && (!player.isFallFlying() || player.isUnderWater())
+                && (!player.isMovingSlowly() || player.isUnderWater());
+        }
+        return SprintPolicy.shouldSprint(strict, eligible, permaSprint.get(), player.zza, player.xxa, player.isUnderWater());
     }
 
     public boolean rageSprint() {
@@ -118,10 +132,10 @@ public class Sprint extends Module {
     }
 
     public boolean unsprintInWater() {
-        return isActive() && unsprintInWater.get();
+        return rageSprint() && unsprintInWater.get();
     }
 
     public boolean stopSprinting() {
-        return !isActive() || !keepSprint.get();
+        return !isActive() || !keepSprint.get() || unsprintOnHit.get();
     }
 }

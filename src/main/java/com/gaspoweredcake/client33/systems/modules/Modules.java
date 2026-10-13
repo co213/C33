@@ -395,6 +395,7 @@ public class Modules extends System<Modules> {
         add(new AutoWeb());
         add(new BedAura());
         add(new BowAimbot());
+        add(new CounterMineRage());
         add(new BowSpam());
         add(new Burrow());
         add(new Criticals());
@@ -489,6 +490,7 @@ public class Modules extends System<Modules> {
         add(new Breadcrumbs());
         add(new BreakIndicators());
         add(new CameraTweaks());
+        add(new BaritoneVisuals());
         add(new Chams());
         add(new CityESP());
         add(new EntityOwner());
@@ -546,6 +548,7 @@ public class Modules extends System<Modules> {
         add(new PacketMine());
         add(new StashFinder());
         add(new BaseFinder());
+        add(new AutoRTP());
         add(new SpawnProofer());
         add(new Timer());
         add(new VeinMiner());

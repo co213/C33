@@ -15,6 +15,15 @@ public final class ModuleLogicRegression {
         check(!cursor.hasNext() && !cursor.hasNext(), "Exhaustion remains stable");
         try { cursor.next(); throw new AssertionError("Exhausted next must throw"); }
         catch (java.util.NoSuchElementException expected) { }
+        ColorRegression.run();
+        GuiRenderRegression.run();
+        RtpRegression.run();
+        CameraRegression.run();
+        StepRegression.run();
+        SprintRegression.run();
+        ReachRegression.run();
+        WatchRegression.run();
+        GunAimRegression.run();
         InfrastructureRegression.run();
         FarmRegression.run();
         MiningRegression.run();

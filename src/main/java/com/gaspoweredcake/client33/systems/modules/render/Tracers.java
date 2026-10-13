@@ -8,6 +8,9 @@ package com.gaspoweredcake.client33.systems.modules.render;
 import com.gaspoweredcake.client33.events.render.Render2DEvent;
 import com.gaspoweredcake.client33.events.render.Render3DEvent;
 import com.gaspoweredcake.client33.renderer.Renderer2D;
+import com.gaspoweredcake.client33.renderer.Renderer3D;
+import com.gaspoweredcake.client33.utils.render.TracerGeometry;
+import com.gaspoweredcake.client33.utils.render.VisualGeometry;
 import com.gaspoweredcake.client33.settings.*;
 import com.gaspoweredcake.client33.systems.config.Config;
 import com.gaspoweredcake.client33.systems.friends.Friends;
@@ -41,6 +44,7 @@ public class Tracers extends Module {
 
     public enum TracerStyle {
         Lines,
+        Ribbon,
         Offscreen
     }
 
@@ -79,7 +83,7 @@ public class Tracers extends Module {
     private final Setting<TracerStyle> style = sgAppearance.add(new EnumSetting.Builder<TracerStyle>()
         .name("style")
         .description("What display mode should be used")
-        .defaultValue(TracerStyle.Lines)
+        .defaultValue(TracerStyle.Ribbon)
         .build()
     );
 
@@ -87,7 +91,7 @@ public class Tracers extends Module {
         .name("target")
         .description("What part of the entity to target.")
         .defaultValue(Target.Body)
-        .visible(() -> style.get() == TracerStyle.Lines)
+        .visible(() -> style.get() != TracerStyle.Offscreen)
         .build()
     );
 
@@ -95,7 +99,7 @@ public class Tracers extends Module {
         .name("stem")
         .description("Draw a line through the center of the tracer target.")
         .defaultValue(true)
-        .visible(() -> style.get() == TracerStyle.Lines)
+        .visible(() -> style.get() != TracerStyle.Offscreen)
         .build()
     );
 
@@ -146,6 +150,31 @@ public class Tracers extends Module {
         .build()
     );
 
+    private final Setting<Double> ribbonWidth = sgAppearance.add(new DoubleSetting.Builder()
+        .name("ribbon-width").description("Bright ribbon core width in screen pixels; feathered edges add a soft halo.")
+        .defaultValue(1.6).range(0.5, 4).sliderRange(0.5, 4).visible(() -> style.get() == TracerStyle.Ribbon).build());
+    private final Setting<Double> arc = sgAppearance.add(new DoubleSetting.Builder()
+        .name("ribbon-arc").description("Gentle upward curve of ribbon tracers.")
+        .defaultValue(0.8).range(0, 2).sliderRange(0, 2).visible(() -> style.get() == TracerStyle.Ribbon).build());
+    private final Setting<Boolean> animate = sgAppearance.add(new BoolSetting.Builder()
+        .name("animate-ribbons").description("Traveling light pulses and rotating endpoint markers.")
+        .defaultValue(true).visible(() -> style.get() == TracerStyle.Ribbon).build());
+    private final Setting<Double> speed = sgAppearance.add(new DoubleSetting.Builder()
+        .name("ribbon-speed").description("Pulse cycles per second.")
+        .defaultValue(0.45).range(0.1, 3).sliderRange(0.1, 3).visible(() -> style.get() == TracerStyle.Ribbon && animate.get()).build());
+    private final Setting<Boolean> markers = sgAppearance.add(new BoolSetting.Builder()
+        .name("endpoint-markers").description("Broken halos at tracer endpoints and subtle ground orbits.")
+        .defaultValue(true).visible(() -> style.get() == TracerStyle.Ribbon).build());
+    private final Setting<Boolean> throughWalls = sgAppearance.add(new BoolSetting.Builder()
+        .name("through-walls").description("Render tracers through terrain.").defaultValue(true).build());
+    private final Setting<Integer> budget = sgAppearance.add(new IntSetting.Builder()
+        .name("entity-budget").description("Maximum tracers drawn per frame to limit clutter and geometry cost.")
+        .defaultValue(48).range(1, 256).sliderRange(1, 128).build());
+    private final Setting<SettingColor> ribbonStart = sgColors.add(new ColorSetting.Builder()
+        .name("ribbon-start").description("Start color of the HSV ribbon gradient; the endpoint uses the entity's color.")
+        .defaultValue(Color.fromHsv(205, 0.38, 0.96, 180).toSetting())
+        .visible(() -> style.get() == TracerStyle.Ribbon).build());
+
     // Colors
 
     public final Setting<Boolean> distance = sgColors.add(new BoolSetting.Builder()
@@ -166,7 +195,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> playersColor = sgColors.add(new ColorSetting.Builder()
         .name("players-colors")
         .description("The player's color.")
-        .defaultValue(new SettingColor(242, 238, 255, 127))
+        .defaultValue(Color.fromHsv(150, 0.48, 0.90, 200).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -174,7 +203,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> animalsColor = sgColors.add(new ColorSetting.Builder()
         .name("animals-color")
         .description("The animal's color.")
-        .defaultValue(new SettingColor(103, 224, 181, 127))
+        .defaultValue(Color.fromHsv(155, 0.36, 0.88, 180).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -182,7 +211,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> waterAnimalsColor = sgColors.add(new ColorSetting.Builder()
         .name("water-animals-color")
         .description("The water animal's color.")
-        .defaultValue(new SettingColor(100, 215, 230, 127))
+        .defaultValue(Color.fromHsv(190, 0.36, 0.90, 180).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -190,7 +219,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> monstersColor = sgColors.add(new ColorSetting.Builder()
         .name("monsters-color")
         .description("The monster's color.")
-        .defaultValue(new SettingColor(255, 112, 135, 127))
+        .defaultValue(Color.fromHsv(48, 0.46, 0.98, 200).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -198,7 +227,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> ambientColor = sgColors.add(new ColorSetting.Builder()
         .name("ambient-color")
         .description("The ambient color.")
-        .defaultValue(new SettingColor(153, 144, 176, 127))
+        .defaultValue(Color.fromHsv(205, 0.28, 0.90, 160).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -206,7 +235,7 @@ public class Tracers extends Module {
     private final Setting<SettingColor> miscColor = sgColors.add(new ColorSetting.Builder()
         .name("misc-color")
         .description("The misc color.")
-        .defaultValue(new SettingColor(188, 179, 205, 127))
+        .defaultValue(Color.fromHsv(185, 0.22, 0.90, 160).toSetting())
         .visible(() -> !distance.get())
         .build()
     );
@@ -215,7 +244,7 @@ public class Tracers extends Module {
     private final Instant initTimer = Instant.now();
 
     public Tracers() {
-        super(Categories.Render, "tracers", "Displays tracer lines to specified entities.");
+        super(Categories.Render, "tracers", "Feathered gradient ribbons, traveling pulses and endpoint halos for selected entities.");
     }
 
     private boolean shouldBeIgnored(Entity entity) {
@@ -246,9 +275,10 @@ public class Tracers extends Module {
 
     @EventHandler
     private void onRender(Render3DEvent event) {
-        if (mc.gameRenderer.gameRenderState().guiRenderState.isHudHidden || style.get() == TracerStyle.Offscreen)
-            return;
         count = 0;
+        if (mc.player == null || mc.level == null || RenderUtils.center == null
+            || mc.gameRenderer.gameRenderState().guiRenderState.isHudHidden || style.get() == TracerStyle.Offscreen) return;
+        Renderer3D renderer = throughWalls.get() ? event.renderer : event.depthRenderer;
 
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (shouldBeIgnored(entity)) continue;
@@ -263,18 +293,21 @@ public class Tracers extends Module {
             if (target.get() == Target.Head) y += height;
             else if (target.get() == Target.Body) y += height / 2;
 
-            event.renderer.line(RenderUtils.center.x, RenderUtils.center.y, RenderUtils.center.z, x, y, z, color);
-            if (stem.get()) event.renderer.line(x, entity.getY(), z, x, entity.getY() + height, z, color);
+            if (!Double.isFinite(x + y + z + height)) continue;
+            if (style.get() == TracerStyle.Ribbon) renderRibbon(renderer, entity, x, y, z, height, color, event.tickDelta);
+            else renderer.line(RenderUtils.center.x, RenderUtils.center.y, RenderUtils.center.z, x, y, z, color);
+            if (stem.get()) renderer.line(x, y - (target.get() == Target.Head ? height : target.get() == Target.Body ? height / 2 : 0), z,
+                x, y + (target.get() == Target.Head ? 0 : target.get() == Target.Body ? height / 2 : height), z, new Color(color).a(color.a / 2));
 
-            count++;
+            if (++count >= budget.get()) break;
         }
     }
 
     @EventHandler
     public void onRender2D(Render2DEvent event) {
-        if (mc.gameRenderer.gameRenderState().guiRenderState.isHudHidden || style.get() != TracerStyle.Offscreen)
-            return;
+        if (style.get() != TracerStyle.Offscreen) return;
         count = 0;
+        if (mc.player == null || mc.level == null || mc.gameRenderer.gameRenderState().guiRenderState.isHudHidden) return;
 
         Renderer2D.COLOR.begin();
 
@@ -288,14 +321,16 @@ public class Tracers extends Module {
 
             Vec2 screenCenter = new Vec2(mc.getWindow().getWidth() / 2.f, mc.getWindow().getHeight() / 2.f);
 
-            Vector3d projection = new Vector3d(entity.xo, entity.yo, entity.zo);
+            Vector3d projection = new Vector3d(entity.xo + (entity.getX() - entity.xo) * event.tickDelta,
+                entity.yo + (entity.getY() - entity.yo) * event.tickDelta, entity.zo + (entity.getZ() - entity.zo) * event.tickDelta);
             boolean projSucceeded = NametagUtils.to2D(projection, 1, false, false);
 
             if (projSucceeded && projection.x > 0.f && projection.x < mc.getWindow().getWidth() && projection.y > 0.f && projection.y < mc.getWindow().getHeight())
                 continue;
 
-            projection = new Vector3d(entity.xo, entity.yo, entity.zo);
-            NametagUtils.to2D(projection, 1, false, true);
+            projection = new Vector3d(entity.xo + (entity.getX() - entity.xo) * event.tickDelta,
+                entity.yo + (entity.getY() - entity.yo) * event.tickDelta, entity.zo + (entity.getZ() - entity.zo) * event.tickDelta);
+            if (!NametagUtils.to2D(projection, 1, false, true) || !Double.isFinite(projection.x + projection.y)) continue;
 
             Vector2f angle = vectorAngles(new Vector3d(screenCenter.x - projection.x, screenCenter.y - projection.y, 0));
             angle.y += 180;
@@ -322,10 +357,70 @@ public class Tracers extends Module {
                 color
             );
 
-            count++;
+            Color rim = new Color(color).a(Math.min(255, color.a + 45));
+            for (int i = 0; i < 3; i++) {
+                Vector2f a = trianglePoints[i], b = trianglePoints[(i + 1) % 3];
+                Renderer2D.COLOR.line(a.x, a.y, b.x, b.y, rim);
+            }
+            if (++count >= budget.get()) break;
         }
 
         Renderer2D.COLOR.render();
+    }
+
+    private final Vector3d p0 = new Vector3d(), p1 = new Vector3d(), ribbonSide = new Vector3d();
+    private final Color c0 = new Color(), c1 = new Color(), clear0 = new Color(), clear1 = new Color();
+
+    private void renderRibbon(Renderer3D renderer, Entity entity, double x, double y, double z, double height, Color color, float tickDelta) {
+        var cameraState = mc.gameRenderer.mainCamera();
+        var cameraPos = cameraState.position();
+        Vector3d camera = new Vector3d(cameraPos.x, cameraPos.y, cameraPos.z);
+        Vector3d right = new Vector3d(cameraState.leftVector()).negate(), up = new Vector3d(cameraState.upVector());
+        Vector3d start = new Vector3d(RenderUtils.center.x, RenderUtils.center.y, RenderUtils.center.z), end = new Vector3d(x, y, z);
+        if (start.distanceSquared(end) < 0.01) return;
+        double time = animate.get() ? (mc.level.getGameTime() + tickDelta) / 20.0 * speed.get() : 0;
+        double phase = TracerGeometry.phase(time + entity.getId() * 0.61803398875);
+        double pulse = animate.get() ? phase : -1;
+        double pixel = 2 * Math.tan(Math.toRadians(Math.clamp(cameraState.getFov(), 1, 175) / 2))
+            / Math.max(1, mc.getWindow().getHeight());
+        double[] from = ribbonStart.get().toHsv(), to = color.toHsv();
+        int alpha = Math.min(color.a, ribbonStart.get().a);
+        for (int i = 0; i < 48; i++) {
+            double t0 = i / 48.0, t1 = (i + 1) / 48.0;
+            TracerGeometry.point(start, end, t0, arc.get(), p0);
+            TracerGeometry.point(start, end, t1, arc.get(), p1);
+            TracerGeometry.side(p0, p1, camera, right, ribbonSide);
+            double w0 = p0.distance(camera) * pixel * ribbonWidth.get() / 2;
+            double w1 = p1.distance(camera) * pixel * ribbonWidth.get() / 2;
+            TracerGeometry.color(from, to, t0, pulse, alpha, c0);
+            TracerGeometry.color(from, to, t1, pulse, alpha, c1);
+            clear0.set(c0).a(0); clear1.set(c1).a(0);
+            ribbonStrip(renderer, w0, w1, -3, -1, clear0, c0, c1, clear1);
+            ribbonStrip(renderer, w0, w1, -1, 1, c0, c0, c1, c1);
+            ribbonStrip(renderer, w0, w1, 1, 3, c0, clear0, clear1, c1);
+        }
+        if (!markers.get()) return;
+        double radius = Math.clamp(entity.getBbWidth() * 0.30, 0.12, 0.4);
+        Color halo = new Color(color).a((int) (color.a * 0.7));
+        for (int i = 0; i < 48; i++) {
+            if (i % 12 >= 9) continue;
+            double a = i * Math.PI / 24 + time, b = (i + 1) * Math.PI / 24 + time;
+            renderer.line(x + radius * (right.x * Math.cos(a) + up.x * Math.sin(a)),
+                y + radius * (right.y * Math.cos(a) + up.y * Math.sin(a)), z + radius * (right.z * Math.cos(a) + up.z * Math.sin(a)),
+                x + radius * (right.x * Math.cos(b) + up.x * Math.sin(b)),
+                y + radius * (right.y * Math.cos(b) + up.y * Math.sin(b)), z + radius * (right.z * Math.cos(b) + up.z * Math.sin(b)), halo);
+        }
+        double ground = entity.yo + (entity.getY() - entity.yo) * tickDelta + 0.025;
+        VisualGeometry.ring(renderer, x, ground, z, entity.getBbWidth() * 0.7, time, Math.PI * 1.35, 36, new Color(halo).a(halo.a / 2));
+    }
+
+    private void ribbonStrip(Renderer3D renderer, double w0, double w1, double left, double right,
+                             Color a, Color b, Color c, Color d) {
+        renderer.quad(p0.x + ribbonSide.x * w0 * left, p0.y + ribbonSide.y * w0 * left, p0.z + ribbonSide.z * w0 * left,
+            p0.x + ribbonSide.x * w0 * right, p0.y + ribbonSide.y * w0 * right, p0.z + ribbonSide.z * w0 * right,
+            p1.x + ribbonSide.x * w1 * right, p1.y + ribbonSide.y * w1 * right, p1.z + ribbonSide.z * w1 * right,
+            p1.x + ribbonSide.x * w1 * left, p1.y + ribbonSide.y * w1 * left, p1.z + ribbonSide.z * w1 * left,
+            b, c, d, a);
     }
 
     private void rotateTriangle(Vector2f[] points, float ang) {

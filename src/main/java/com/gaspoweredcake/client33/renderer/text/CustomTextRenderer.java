@@ -22,6 +22,8 @@ public class CustomTextRenderer implements TextRenderer {
 
     public final FontFace fontFace;
 
+    private static final int[] FONT_HEIGHTS = {27, 41, 54, 68, 81, 108, 135};
+    private final ByteBuffer fontBuffer;
     private final Font[] fonts;
     private Font font;
 
@@ -33,12 +35,9 @@ public class CustomTextRenderer implements TextRenderer {
     public CustomTextRenderer(FontFace fontFace) throws IOException {
         this.fontFace = fontFace;
 
-        ByteBuffer buffer = fontFace.readToDirectByteBuffer();
-
-        fonts = new Font[5];
-        for (int i = 0; i < fonts.length; i++) {
-            fonts[i] = new Font(buffer, (int) Math.round(27 * ((i * 0.5) + 1)));
-        }
+        fontBuffer = fontFace.readToDirectByteBuffer();
+        fonts = new Font[FONT_HEIGHTS.length];
+        fonts[0] = new Font(fontBuffer, FONT_HEIGHTS[0]);
     }
 
     @Override
@@ -52,20 +51,12 @@ public class CustomTextRenderer implements TextRenderer {
 
         if (!scaleOnly) mesh.begin();
 
-        if (big) {
-            this.font = fonts[fonts.length - 1];
-        } else {
-            double scaleA = Math.floor(scale * 10) / 10;
-
-            int scaleI;
-            if (scaleA >= 3) scaleI = 5;
-            else if (scaleA >= 2.5) scaleI = 4;
-            else if (scaleA >= 2) scaleI = 3;
-            else if (scaleA >= 1.5) scaleI = 2;
-            else scaleI = 1;
-
-            font = fonts[scaleI - 1];
-        }
+        // Choose an atlas at least as large as the requested scale; create it only when used.
+        int index = 0;
+        double requestedHeight = 27 * (big ? Math.max(3, scale) : scale);
+        while (index < FONT_HEIGHTS.length - 1 && FONT_HEIGHTS[index] < requestedHeight) index++;
+        if (fonts[index] == null) fonts[index] = new Font(fontBuffer, FONT_HEIGHTS[index]);
+        font = fonts[index];
 
         this.building = true;
         this.scaleOnly = scaleOnly;
@@ -134,7 +125,7 @@ public class CustomTextRenderer implements TextRenderer {
 
     public void destroy() {
         for (Font font : this.fonts) {
-            font.texture.close();
+            if (font != null) font.texture.close();
         }
     }
 }

@@ -11,7 +11,7 @@ Press **Right Shift** to open 33. The startup credit is simply **33**.
 - Press **Ctrl+F** (**Command+F** on macOS) to focus the browser search.
 - Inside a module, use **Find a setting** to filter controls. The enable switch and Back button are at the top; keybind and feedback controls are in a collapsible section.
 
-The default palette uses crimson accents over charcoal cards. Existing saved theme colors remain customizable in the GUI tab.
+The default palette is designed in HSV/HSB: fresh green accents, warm yellow highlights, deep natural blue surfaces, and bright neutral text. The color editor uses Hue (degrees), Saturation, Brightness and Opacity (percent). Existing saved theme colors remain customizable in the GUI tab; reset individual GUI color settings to apply the new defaults. RGB/hex clipboard imports and existing saved colors remain compatible.
 
 ## ESP
 
@@ -34,7 +34,7 @@ Use Java 25 and `./gradlew build`. The build's `check` task runs `moduleLogicReg
 
 ## Visual Studio and combat effects
 
-The menu uses the existing custom Minecraft GPU pipelines (tested with OpenGL), not ImGui or DX11. It stays integrated with Minecraft input, scaling and resource lifecycle without another native dependency. The animated menu figures are schematic previews, not live player models; use a world to see actual effects. Saved custom theme colors remain in place; reset GUI color settings to use the new crimson defaults.
+The menu uses the existing custom Minecraft GPU pipelines (tested with OpenGL), not ImGui or DX11. Rounded surfaces use finer curves and a one-pixel coverage fringe to soften jagged edges at framebuffer resolution. Custom text selects a font atlas that covers the requested GUI scale, with larger atlases created on demand through the maximum GUI/title scale. It stays integrated with Minecraft input, scaling and resource lifecycle without another native dependency. The animated menu figures are schematic previews, not live player models; use a world to see actual effects. Headers use an elevated blue surface, inset groups use deeper blue, and window shadows separate layers. Saved custom theme colors remain in place; reset GUI color settings to use the new green/yellow/blue defaults.
 
 - **Hologram ESP**: segmented ground orbit, vertical rails and a rising scan band.
 - **Constellation ESP**: twin animated helices with bright nodes around each entity.
@@ -217,3 +217,87 @@ Menus now use rounded panels, headers, buttons, inputs, dropdowns, tooltips, mod
 Other online players may appear in the server player list without coordinates. The dashboard reports this count instead of inventing positions. The client cannot locate never-observed players, track offline players' current positions, or retrieve server-withheld positions.
 
 **Saved waypoints** in Baritone offers search, refresh, Walk to and Mine to. It includes compatible dimensions and uses existing Overworld/Nether waypoint scaling when enabled on a waypoint. Each action checks that the waypoint still exists and that the world/dimension is compatible before starting.
+
+## Auto RTP chest search
+
+Search **Auto RTP** in the World category and enable it on a multiplayer server with an RTP command. It scans the current area before sending `/rtp` and repeats until it sees enough loaded chest containers. Defaults: eight containers within 64 blocks, at least 30 real seconds between commands, and a 10-second chunk-loading wait. Set Command, Command Interval, Load Wait, Minimum Chests and Search Radius for your server. Double chests count once; trapped chests count, ender chests do not. Chest contents and unloaded terrain are not inspected, so a match is a storage candidate rather than proof of a player base.
+
+Commands pause while any screen is open. Discovery visits at most four chunks and 256 block-entity positions per tick, finishes a scan before retrying, and rechecks matching chests before stopping. Teleports/world changes discard old scan data; disconnect, death or disabling the module stops it. A match saves a waypoint by default and disables Auto RTP. It requires no Baritone. Server command permissions, teleport warmups and cooldowns still apply; rejected commands are retried at the configured interval.
+
+## Tracer ribbons
+
+Tracers defaults to **Ribbon**: a softly curved blue-to-green HSV gradient with feathered edges, a traveling light pulse, broken endpoint halos and subtle ground orbits. Existing Lines and Offscreen selections remain available; choose Ribbon in Appearance if a saved configuration selects Lines. Width is specified in screen pixels, with 48 curve segments and a configurable entity budget (48 by default). Ribbon Arc, animation, pulse speed and endpoint markers are adjustable. Through Walls selects either the overlay or terrain depth pipeline. Friend/entity filters, distance colors, target selection and custom colors are preserved. Offscreen arrows interpolate movement and have a brighter rim; invalid projections are omitted. GUI palette and tracer defaults use the green/yellow/natural blue direction; reset saved color settings to apply those defaults.
+
+## Minecraft tuning and camera improvements
+
+Open **Right Shift → Studio → Scene & Camera → Minecraft tuning**. This edits Minecraft 26.2's native options through their normal validators and callbacks: graphics preset, view distance, smooth lighting, improved transparency, vignette, clouds, particles, chunk fade, brightness, FOV, camera effects and performance limits. Slider changes commit on release to avoid rebuilding terrain throughout a drag; typed values commit when focus leaves the field. Settings save when leaving the screen, including the focused editor. **All Minecraft options** opens the vanilla options screen and returns here with refreshed values. Graphics presets also change native view distance and other quality options. Multiplayer servers still determine received terrain and simulation range; active modules such as Zoom/Fullbright may override the displayed result.
+
+**Gentle motion** reduces sprint FOV shifts, damage tilt, portal/nausea effects and darkness pulsing; it disables view bobbing and lightning flashes. **Undo motion preset** restores the motion values captured before the latest preset click during this screen session. Opening the tuning screen alone changes no options.
+
+**Camera Tweaks** now bounds distance to 0–64 blocks. Its scroll target uses a proportional curve that cannot flip distance negative and can recover from zero. **Smooth Distance** eases scroll changes consistently across normal frame rates; **Smoothing Speed** controls response. Disable smoothing for immediate changes. Alt + scroll remains the default binding; first person and open screens leave scrolling to Minecraft.
+
+**Ambience** defaults now use HSV natural blues, greens and warm highlights for sky, clouds, water, grass, foliage, fog, lava and lightning. Overrides remain opt-in, and saved custom colors remain unchanged. Reset individual colors to use the new defaults. Disabling Ambience now refreshes terrain so baked grass/water/foliage tint returns to normal.
+
+**Natural GUI colors** use forest and teal surfaces, sky-lit header gradients, leaf green controls and sunshine yellow titles. Studio cards carry green, blue or yellow markers to separate their roles. The **Natural colors** button beside module search applies the palette to existing saved GUI colors and saves it; GUI scale, layout and module settings are retained. Each color remains editable in the theme settings.
+
+## Import and automatically build a building
+
+Open **Studio → Scene & Camera → Import & build a building**, or **Baritone → Import & build a schematic**.
+
+1. **Browse & convert building**, or drop one file on Building Studio. Supported inputs: Alpha/MCEdit `.schematic`, Sponge v1–3 `.schem`, Litematica v4–7 `.litematic`, and vanilla structure `.nbt`. Gzip and uncompressed NBT are accepted. Conversion runs in the background.
+2. Review dimensions, Minecraft data versions and **Materials — block counts**. Choose the lowest X/Y/Z corner, or **Use my position**. Imported offsets are normalized to that corner; buildings extend east, up and south. Rotation/mirroring are not provided by this importer.
+3. Bring the required blocks and press **Build building**, then close the screen to let Baritone move. **Pause**, **Resume** and **Stop** control the current backend task. Building requires an installed Baritone for Minecraft 26.2; importing itself does not.
+
+A converted Sponge v2 copy is saved to your game directory's `schematics/` folder under a new name. Originals remain untouched. **Load saved** restores a previous converted building when you reopen the screen. Minecraft's data fixer upgrades historical block names/properties; pre-1.13 numeric IDs are flattened first. This converts block geometry/state, not a complete world or every feature of an old mod. Unavailable blocks, invalid properties and files from newer Minecraft versions fail clearly instead of silently becoming air. Legacy modded numeric IDs and overlapping Litematica regions are rejected; merge/replace those in the source first. Multiple nonoverlapping Litematica regions and negative region sizes are supported.
+
+**Keep existing blocks where the schematic is air** is on by default. Turn it off to also clear schematic air cells. Unspecified vanilla structure cells, structure-void markers and gaps between Litematica regions are always preserved. Review the origin before building; the builder may replace blocks inside the requested solid geometry. World-height/border checks run before replacing another task.
+
+The builder places blocks from your inventory using normal gameplay. Entities, block-entity data (including chest contents and sign text), and automatic material gathering are not included. Material counts report block cells; item costs can differ for doors, beds, crops or slabs. Missing materials, protected land or unreachable placement can stall Baritone; check its chat/status. Imports are limited to 64 MiB on disk, 128 MiB NBT accounting, 512 blocks per side and two million cells. These bounds also apply to a multi-region bounding box.
+
+Building Studio clears the previous selection when starting another import; a failed import cannot leave an older building selected for Build. The selected filename is shown above its dimensions. Incomplete or noninteger Litematica region positions/sizes and malformed structure lists/properties are rejected before conversion.
+
+## Step on multiplayer servers
+
+**Movement → Step → Mode: Auto** (default) uses normal Minecraft jumps in multiplayer and instant Native stepping in singleplayer. **Jump** always uses normal jumps. **Native** raises the client step-height attribute and needs the server to allow that movement; it cannot override a server movement plugin's rules.
+
+Jump assistance requires a grounded moving player, a horizontal obstruction and clearance for the full ordinary jump arc. It skips tall walls, liquids, ladders, flight, vehicles, open menus and manually pressed jump. The configured height still limits obstacles; ordinary jumping is capped at 1.25 blocks. Sneaking suppresses assistance unless Active When explicitly selects Sneaking.
+
+Server position corrections/teleports pause Step assistance for two real seconds and restore the normal attribute. A correction received while Native stepping is applied switches to **Jump fallback** until you re-enable Step. Corrections are accepted normally; no movement packets are fabricated or cancelled. Repeated corrections extend the pause. The module restores the captured attribute base value (retaining modifiers), preserves later server attribute updates and handles player replacement/disconnect safely. Baritone's instant-step setting is enabled only during Native stepping and restored otherwise.
+
+Safe Step's crystal exposure probes always restore the player's bounding box, including on exceptions, and use yaw-correct movement offsets. Server-specific plugin compatibility still requires testing on that server; custom movement restrictions can also reject ordinary jumps.
+
+## Sprint
+
+Sprint **Strict** (default) uses Minecraft 26.2's native start/run/swim eligibility, including food, mobility, shallow water, item use and vehicle restrictions. **Rage** adds backwards/sideways sprint and optional stationary sprint while retaining mobility, food, collision and item-use eligibility. Its water setting now stops sprint immediately; Strict uses normal Minecraft swimming rules. GUI sprint requires active GUI Move, its Sprint option and an allowed screen; chat and text-entry screens do not qualify.
+
+Sprint state is applied after movement input updates, before ordinary movement packets. Unsprint On Hit synchronizes the vanilla sprint state before the attack and resumes automatic sprint on the next movement update; it does not immediately restart inside the attack. Keep Sprint preserves ordinary attack sprint when Unsprint On Hit is off. Critical/sweep attacks still need normal Minecraft conditions. Disabling releases automatic sprint unless the manual sprint key is held. Existing mode/setting names remain compatible with saved configurations.
+
+## Display names
+
+Display names refresh when the language or resource packs change. Enchantment keys always resolve against the current server registry, with a translation or namespaced identifier fallback when disconnected; unbound holders are handled safely. Names no longer retain server enchantment holders in global caches. Custom stack names remain live and all display names consistently remove legacy formatting codes. Missing sound subtitles use readable words. Built-in name caches use thread-safe maps and replace their entire generation on resource reload.
+
+## Reach
+
+Reach now has independent block/entity channels. **Extra** (default) adds the saved `extra-block-reach` / `extra-entity-reach` values to Minecraft's current attributes, preserving creative and other native modifiers. **Total** selects a final distance per channel. Optional **Only While Sneaking** and **Creative Only** conditions return to native ranges when unmet. Custom ranges are bounded to 0–64 blocks; negative Extra values can reduce range. The HUD info shows effective block/entity ranges. Only the local client player's getters are changed; native attributes and other players remain untouched.
+
+Server validation still determines whether mining, placement, containers or attacks at the selected range succeed. There is no universal extra-reach allowance or plugin bypass; the old blanket vanilla/Paper claim has been removed.
+
+## AFK Baritone watching
+
+Open **Path Manager → AFK viewing → Watch in third person**, or enable **Render → Baritone Visuals** and select the rear third-person view. The module adds a depth-tested feathered green/blue route ribbon, soft traveling light, a warm destination ring for concrete goals, and a rounded journey card. Progress/approximate game-time remaining refer to the **current calculated path segment**, not an entire mining/build task; these can reset when Baritone recalculates. No concrete marker is invented for composite or XZ-only goals.
+
+The AFK camera defaults to six blocks back and an 18-degree downward viewing angle, with eased turns. It changes only the rendered camera while a backend task is active. Player rotations, commands, movement and pathfinding remain unchanged. Camera collision stays enabled during watching, including when Camera Tweaks normally clips. First person, front third person, Freecam, Free Look and Highway Builder keep their own camera behavior. Disable Smooth Watch Camera to use the ordinary camera, or tune distance/pitch/response. Disable Animation for still geometry. Path snapshots refresh every five game ticks, contain at most 256 nodes and reset on world change/disable; visual geometry is distance-limited. Backends without visual-path support show no overlay.
+
+## KillAura watching and target selection
+
+**Combat → KillAura → Presentation → Smooth Combat Animation** eases only the local player's rendered third-person body/head turns; Animation Response controls how closely they follow sent aim. Rotation packets, player angles, cooldowns, attack callbacks, target-count settings and hit rules remain unchanged. The visible pose can briefly lag actual aim while easing. Disable the setting to display exact sent angles. This is presentation smoothing, not a claim that automation behaves like a human.
+
+Target selection now keeps only the best requested candidates in a bounded heap instead of sorting all eligible entities. It preserves the previous stable ordering, tie order, sticky primary target and all entity filters. It reduces sorting work for small target limits in crowded areas, without introducing acquisition waits, random aim or attack delays. Gear, latency, server rules and opponents still determine fight outcomes.
+
+## Counter-Mine 2 gun aiming
+
+**Combat → Counter Mine Rage** is a separate, disabled-by-default gun module. Hold a gun, use **Add held gun name** if its name is not recognized, and enable the module. The default profile permits `cherry.pizza` and its subdomains; add an alternate address to Server Hosts when needed. Configurable CS-style aliases are examples, not verified server item IDs. Prefer names over base items when guns and grenades share a vanilla item.
+
+It instantly aims at visible players within 128 blocks by default, preferring an exposed head then torso. Friends, scoreboard allies, spectators and dead players are excluded. Range, acquisition cone, head/chest/visible aim points, priority and sticky targeting are adjustable. Always tracks while holding the gun; While Firing follows the configured Attack or Use key. **Firing remains manual.** Aim is synchronized with an ordinary rotation packet before vanilla key handling. Optional motion prediction is off for direct hitscan aim; when enabled it is bounded and ignores teleport deltas. Disable competing aim modules to avoid conflicting rotations.
+
+Counter-Mine 2's public listing describes server-controlled recoil, spread and wall penetration and supplies no weapon protocol. This module does not claim to cancel spread/recoil, infer custom teams, or guarantee hits. Require Visible can be disabled to aim through cover, but the server decides penetration. The optional CherryPizza modpack currently lists Minecraft 1.21.11; this build targets 26.2, so connecting, gun names, controls and actual shot behavior need verification on the server. Menus, pause, disconnect, world replacement and invalid targets stop tracking.

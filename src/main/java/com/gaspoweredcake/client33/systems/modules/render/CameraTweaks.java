@@ -6,6 +6,8 @@
 package com.gaspoweredcake.client33.systems.modules.render;
 
 import com.gaspoweredcake.client33.events.game.ChangePerspectiveEvent;
+import com.gaspoweredcake.client33.events.render.Render3DEvent;
+import com.gaspoweredcake.client33.utils.render.CameraMotion;
 import com.gaspoweredcake.client33.events.client33.MouseScrollEvent;
 import com.gaspoweredcake.client33.settings.*;
 import com.gaspoweredcake.client33.systems.modules.Categories;
@@ -32,8 +34,9 @@ public class CameraTweaks extends Module {
         .name("camera-distance")
         .description("The distance the third person camera is from the player.")
         .defaultValue(4)
-        .min(0)
-        .onChanged(value -> distance = value)
+        .range(0, CameraMotion.MAX_DISTANCE)
+        .sliderMax(16)
+        .onChanged(this::setDistance)
         .build()
     );
 
@@ -59,11 +62,25 @@ public class CameraTweaks extends Module {
         .description("Sensitivity of the scroll wheel when changing the cameras distance.")
         .visible(scrollingEnabled::get)
         .defaultValue(1)
-        .min(0.01)
+        .range(0.01, 10)
+        .sliderRange(0.01, 3)
         .build()
     );
 
+    private final Setting<Boolean> smoothDistance = sgScrolling.add(new BoolSetting.Builder()
+        .name("smooth-distance").description("Ease camera distance changes after scrolling.")
+        .defaultValue(true).visible(scrollingEnabled::get).build());
+    private final Setting<Double> smoothSpeed = sgScrolling.add(new DoubleSetting.Builder()
+        .name("smoothing-speed").description("How quickly the camera reaches its new distance. Higher values respond faster.")
+        .defaultValue(8).range(1, 20).sliderRange(1, 20)
+        .visible(() -> scrollingEnabled.get() && smoothDistance.get()).build());
+
     public double distance;
+    private double targetDistance;
+
+    private void setDistance(double value) {
+        distance = targetDistance = CameraMotion.distance(value);
+    }
 
     public CameraTweaks() {
         super(Categories.Render, "camera-tweaks", "Allows modification of the third person camera.");
@@ -71,12 +88,12 @@ public class CameraTweaks extends Module {
 
     @Override
     public void onActivate() {
-        distance = cameraDistance.get();
+        setDistance(cameraDistance.get());
     }
 
     @EventHandler
     private void onPerspectiveChanged(ChangePerspectiveEvent event) {
-        distance = cameraDistance.get();
+        setDistance(cameraDistance.get());
     }
 
     @EventHandler
@@ -85,10 +102,18 @@ public class CameraTweaks extends Module {
             return;
 
         if (scrollSensitivity.get() > 0) {
-            distance -= event.value * 0.25 * (scrollSensitivity.get() * distance);
-
+            targetDistance = CameraMotion.scroll(targetDistance, event.value, scrollSensitivity.get());
+            if (!smoothDistance.get()) distance = targetDistance;
             event.cancel();
         }
+    }
+
+    @EventHandler
+    private void onRender(Render3DEvent event) {
+        if (mc.isPaused()) return;
+        distance = smoothDistance.get()
+            ? CameraMotion.approach(distance, targetDistance, event.frameTime, smoothSpeed.get())
+            : targetDistance;
     }
 
     public boolean clip() {

@@ -13,6 +13,7 @@ import com.gaspoweredcake.client33.systems.modules.Categories;
 import com.gaspoweredcake.client33.systems.modules.Module;
 import com.gaspoweredcake.client33.utils.player.PlayerUtils;
 import com.gaspoweredcake.client33.utils.render.color.SettingColor;
+import com.gaspoweredcake.client33.utils.render.color.Color;
 
 /**
  * @author Walaryne
@@ -40,7 +41,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> overworldSkyColor = sgSky.add(new ColorSetting.Builder()
         .name("overworld-sky-color")
         .description("The color of the overworld sky.")
-        .defaultValue(new SettingColor(0, 125, 255))
+        .defaultValue(Color.fromHsv(205, 0.42, 0.95).toSetting())
         .visible(customSkyColor::get)
         .build()
     );
@@ -48,7 +49,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> netherSkyColor = sgSky.add(new ColorSetting.Builder()
         .name("nether-sky-color")
         .description("The color of the nether sky.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(16, 0.58, 0.38).toSetting())
         .visible(customSkyColor::get)
         .build()
     );
@@ -56,7 +57,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> endSkyColor = sgSky.add(new ColorSetting.Builder()
         .name("end-sky-color")
         .description("The color of the end sky.")
-        .defaultValue(new SettingColor(65, 30, 90))
+        .defaultValue(Color.fromHsv(265, 0.38, 0.42).toSetting())
         .visible(customSkyColor::get)
         .build()
     );
@@ -71,7 +72,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> cloudColor = sgSky.add(new ColorSetting.Builder()
         .name("cloud-color")
         .description("The color of the clouds.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(205, 0.035, 0.96).toSetting())
         .visible(customCloudColor::get)
         .build()
     );
@@ -86,7 +87,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> lightningColor = sgSky.add(new ColorSetting.Builder()
         .name("lightning-color")
         .description("The color of the lightning.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(48, 0.12, 1).toSetting())
         .visible(changeLightningColor::get)
         .build()
     );
@@ -103,7 +104,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> grassColor = sgWorld.add(new ColorSetting.Builder()
         .name("grass-color")
         .description("The color of the grass.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(105, 0.48, 0.68).toSetting())
         .visible(customGrassColor::get)
         .onChanged(_ -> reload())
         .build()
@@ -120,7 +121,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> foliageColor = sgWorld.add(new ColorSetting.Builder()
         .name("foliage-color")
         .description("The color of the foliage.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(140, 0.45, 0.54).toSetting())
         .visible(customFoliageColor::get)
         .onChanged(_ -> reload())
         .build()
@@ -137,7 +138,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> waterColor = sgWorld.add(new ColorSetting.Builder()
         .name("water-color")
         .description("The color of the water.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(200, 0.52, 0.78).toSetting())
         .visible(customWaterColor::get)
         .onChanged(_ -> reload())
         .build()
@@ -154,7 +155,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> lavaColor = sgWorld.add(new ColorSetting.Builder()
         .name("lava-color")
         .description("The color of the lava.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(28, 0.74, 0.98).toSetting())
         .visible(customLavaColor::get)
         .onChanged(_ -> reload())
         .build()
@@ -170,7 +171,7 @@ public class Ambience extends Module {
     public final Setting<SettingColor> fogColor = sgWorld.add(new ColorSetting.Builder()
         .name("fog-color")
         .description("The color of the fog.")
-        .defaultValue(new SettingColor(102, 0, 0))
+        .defaultValue(Color.fromHsv(205, 0.15, 0.78).toSetting())
         .visible(customFogColor::get)
         .build()
     );
@@ -186,13 +187,15 @@ public class Ambience extends Module {
 
     @Override
     public void onDeactivate() {
-        reload();
+        refreshTerrain();
     }
 
     private void reload() {
-        if (mc.levelRenderer != null && isActive()) {
-            mc.levelExtractor.allChanged();
-        }
+        if (isActive()) refreshTerrain();
+    }
+
+    private void refreshTerrain() {
+        if (mc.level != null && mc.levelExtractor != null) mc.levelExtractor.allChanged();
     }
 
     public SettingColor skyColor() {

@@ -143,61 +143,24 @@ public class Color implements ICopyable<Color>, ISerializable<Color> {
         return (color >> 24) & 0x000000FF;
     }
 
+    /** Hue in degrees; saturation and brightness (value) in [0, 1]. */
     public static Color fromHsv(double h, double s, double v) {
-        double hh, p, q, t, ff;
-        int i;
-        double r, g, b;
-
-        if (s <= 0.0) {       // < is bogus, just shuts up warnings
-            r = v;
-            g = v;
-            b = v;
-            return new Color((int) (r * 255), (int) (g * 255), (int) (b * 255), 255);
+        if (!Double.isFinite(h) || !Double.isFinite(s) || !Double.isFinite(v)) {
+            throw new IllegalArgumentException("HSV components must be finite");
         }
-        hh = h;
-        if (hh >= 360.0) hh = 0.0;
-        hh /= 60.0;
-        i = (int) hh;
-        ff = hh - i;
-        p = v * (1.0 - s);
-        q = v * (1.0 - (s * ff));
-        t = v * (1.0 - (s * (1.0 - ff)));
+        double hue = ((h % 360) + 360) % 360;
+        return new Color(java.awt.Color.HSBtoRGB((float) (hue / 360),
+            (float) Math.clamp(s, 0, 1), (float) Math.clamp(v, 0, 1)));
+    }
 
-        switch (i) {
-            case 0:
-                r = v;
-                g = t;
-                b = p;
-                break;
-            case 1:
-                r = q;
-                g = v;
-                b = p;
-                break;
-            case 2:
-                r = p;
-                g = v;
-                b = t;
-                break;
+    public static Color fromHsv(double h, double s, double v, int alpha) {
+        return fromHsv(h, s, v).a(alpha);
+    }
 
-            case 3:
-                r = p;
-                g = q;
-                b = v;
-                break;
-            case 4:
-                r = t;
-                g = p;
-                b = v;
-                break;
-            case 5:
-            default:
-                r = v;
-                g = p;
-                b = q;
-                break;
-        }
-        return new Color((int) (r * 255), (int) (g * 255), (int) (b * 255), 255);
+    /** Returns hue in degrees, saturation and brightness in [0, 1]. Alpha is separate. */
+    public double[] toHsv() {
+        float[] hsb = java.awt.Color.RGBtoHSB(r, g, b, null);
+        return new double[] {hsb[0] * 360.0, hsb[1], hsb[2]};
     }
 
     public Color set(int r, int g, int b, int a) {

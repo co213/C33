@@ -91,21 +91,23 @@ public abstract class PlayerMixin extends LivingEntity {
 
     @WrapWithCondition(method = "causeExtraKnockback", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;setDeltaMovement(Lnet/minecraft/world/phys/Vec3;)V"))
     private boolean keepSprint$setDeltaMovement(Player instance, Vec3 vec3d) {
-        return Modules.get().get(Sprint.class).stopSprinting();
+        return mc == null || instance != mc.player || Modules.get().get(Sprint.class).stopSprinting();
     }
 
     @WrapWithCondition(method = "causeExtraKnockback", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;setSprinting(Z)V"))
     private boolean keepSprint$setSprinting(Player instance, boolean b) {
-        return Modules.get().get(Sprint.class).stopSprinting();
+        return mc == null || instance != mc.player || Modules.get().get(Sprint.class).stopSprinting();
     }
 
     @ModifyReturnValue(method = "blockInteractionRange", at = @At("RETURN"))
     private double modifyBlockInteractionRange(double original) {
-        return Math.max(0, original + Modules.get().get(Reach.class).blockReach());
+        if (!level().isClientSide() || mc == null || (Object) this != mc.player) return original;
+        return Modules.get().get(Reach.class).blockRange(original);
     }
 
     @ModifyReturnValue(method = "entityInteractionRange", at = @At("RETURN"))
     private double modifyEntityInteractionRange(double original) {
-        return Math.max(0, original + Modules.get().get(Reach.class).entityReach());
+        if (!level().isClientSide() || mc == null || (Object) this != mc.player) return original;
+        return Modules.get().get(Reach.class).entityRange(original);
     }
 }

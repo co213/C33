@@ -21,6 +21,8 @@ import com.gaspoweredcake.client33.settings.*;
 import com.gaspoweredcake.client33.systems.modules.Modules;
 import com.gaspoweredcake.client33.systems.waypoints.Waypoints;
 import com.gaspoweredcake.client33.systems.modules.render.LogoutSpots;
+import com.gaspoweredcake.client33.systems.modules.render.BaritoneVisuals;
+import net.minecraft.client.CameraType;
 import net.minecraft.core.BlockPos;
 import java.util.UUID;
 import java.util.HashSet;
@@ -116,6 +118,8 @@ public class PathManagerTab extends Tab {
                 else { usePosition(); form.invalidate(); feedback.set("Coordinates copied from your player."); }
             });
             feedback = add(theme.label("Choose a task, then Start. Stop cancels it.", 380)).expandX().widget();
+            add(theme.button("Import & build a schematic...")).expandX().widget().action = () ->
+                mc.gui.setScreen(new com.gaspoweredcake.client33.gui.screens.SchematicBuildScreen(theme));
             addWaypoints();
             addDestinations();
             addMovement();
@@ -252,6 +256,14 @@ public class PathManagerTab extends Tab {
         }
 
         private void addMovement() {
+            WContainer watch = add(theme.section("AFK viewing", false)).expandX().widget();
+            watch.add(theme.label("A calm rear camera, soft route ribbon and current-path status card.", 360));
+            button(watch, "Watch in third person", () -> {
+                Modules.get().get(BaritoneVisuals.class).enable();
+                mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+                feedback.set("Baritone Visuals enabled. Configure its camera and colors in Render modules.");
+            });
+            button(watch, "Turn off watch visuals", () -> Modules.get().get(BaritoneVisuals.class).disable());
             SettingGroup common = movement.createGroup("Movement", false);
             proxy(common, "allowBreak", "break-blocks", "Allow Baritone to mine blocks along its path.");
             proxy(common, "allowPlace", "place-blocks", "Allow Baritone to place blocks along its path.");

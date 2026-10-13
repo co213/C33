@@ -234,34 +234,44 @@ public class GuiRenderer {
         quad(x, y, width, height, color, color);
     }
 
-    /** Rounded geometry uses the same colored mesh and scissor stack as other GUI shapes. */
+    private final Color roundedTop = new Color(), roundedBottom = new Color(), roundedVertexColor = new Color(), roundedTransparent = new Color();
+    private boolean roundedFlat;
+    private double roundedY, roundedHeight;
+    private final RoundedRectGeometry.TriangleSink roundedSink = this::roundedTriangle;
+
+    /** Draw at framebuffer resolution with a one-pixel coverage fringe. */
     public void roundedQuad(double x, double y, double width, double height, double radius, Color color) {
-        if (!(width > 0 && height > 0) || !Double.isFinite(width + height + x + y + radius)) return;
-        radius = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
-        if (radius == 0) { quad(x, y, width, height, color); return; }
-        quad(x + radius, y, width - 2 * radius, height, color);
-        quad(x, y + radius, radius, height - 2 * radius, color);
-        quad(x + width - radius, y + radius, radius, height - 2 * radius, color);
-        for (int corner = 0; corner < 4; corner++) {
-            double cx = x + (corner == 0 || corner == 3 ? width - radius : radius);
-            double cy = y + (corner < 2 ? height - radius : radius);
-            for (int segment = 0; segment < 8; segment++) {
-                int index = corner * 8 + segment;
-                r.triangles.ensureTriCapacity();
-                r.triangles.triangle(
-                    r.triangles.vec2(cx, cy).color(color).next(),
-                    r.triangles.vec2(cx + ROUND_COS[index + 1] * radius, cy + ROUND_SIN[index + 1] * radius).color(color).next(),
-                    r.triangles.vec2(cx + ROUND_COS[index] * radius, cy + ROUND_SIN[index] * radius).color(color).next());
-            }
-        }
+        roundedQuad(x, y, width, height, radius, color, color);
     }
 
-    private static final double[] ROUND_COS = new double[33], ROUND_SIN = new double[33];
-    static {
-        for (int i = 0; i <= 32; i++) {
-            ROUND_COS[i] = Math.cos(i * Math.PI / 16);
-            ROUND_SIN[i] = Math.sin(i * Math.PI / 16);
-        }
+    /** A vertical color gradient, clipped to the same rounded coverage geometry. */
+    public void roundedQuad(double x, double y, double width, double height, double radius, Color top, Color bottom) {
+        if (!(width > 0 && height > 0) || !Double.isFinite(x + y + width + height + radius)) return;
+        if (radius <= 0) { quad(x, y, width, height, top, top, bottom, bottom); return; }
+        roundedFlat = top == bottom;
+        roundedTop.set(top);
+        roundedTransparent.set(top).a(0);
+        roundedBottom.set(bottom);
+        roundedY = y;
+        roundedHeight = height;
+        RoundedRectGeometry.draw(x, y, width, height, radius, roundedSink);
+    }
+
+    private int roundedVertex(double x, double y, int coverage) {
+        if (roundedFlat) return r.triangles.vec2(x, y).color(coverage == 0 ? roundedTransparent : roundedTop).next();
+        double t = Math.clamp((y - roundedY) / roundedHeight, 0, 1);
+        roundedVertexColor.set(
+            (int) Math.round(roundedTop.r + (roundedBottom.r - roundedTop.r) * t),
+            (int) Math.round(roundedTop.g + (roundedBottom.g - roundedTop.g) * t),
+            (int) Math.round(roundedTop.b + (roundedBottom.b - roundedTop.b) * t),
+            coverage == 0 ? 0 : (int) Math.round(roundedTop.a + (roundedBottom.a - roundedTop.a) * t));
+        return r.triangles.vec2(x, y).color(roundedVertexColor).next();
+    }
+
+    private void roundedTriangle(double x0, double y0, int a0, double x1, double y1, int a1,
+                                 double x2, double y2, int a2) {
+        r.triangles.ensureTriCapacity();
+        r.triangles.triangle(roundedVertex(x0, y0, a0), roundedVertex(x1, y1, a1), roundedVertex(x2, y2, a2));
     }
 
     public void roundedQuad(WWidget widget, double radius, Color color) {

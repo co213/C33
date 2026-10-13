@@ -11,6 +11,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.gaspoweredcake.client33.mixininterface.IVec3;
 import com.gaspoweredcake.client33.systems.modules.Modules;
 import com.gaspoweredcake.client33.systems.modules.render.Chams;
+import com.gaspoweredcake.client33.systems.modules.combat.KillAura;
 import com.gaspoweredcake.client33.utils.player.Rotations;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.player.PlayerModel;
@@ -95,6 +96,11 @@ public abstract class AvatarRendererMixin
             state.yRot = 0;
             state.bodyRot = Rotations.serverYaw;
             state.xRot = Rotations.serverPitch;
+            KillAura aura = Modules.get().get(KillAura.class);
+            if (aura.sampleRenderRotation(Rotations.serverYaw, Rotations.serverPitch)) {
+                state.bodyRot = aura.renderedYaw;
+                state.xRot = aura.renderedPitch;
+            }
         }
     }
 }

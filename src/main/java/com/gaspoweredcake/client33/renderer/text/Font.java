@@ -24,10 +24,12 @@ public class Font {
     private final float scale;
     private final float ascent;
     private final Int2ObjectOpenHashMap<CharData> charMap = new Int2ObjectOpenHashMap<>();
-    private static final int size = 2048;
+    private final int size;
 
     public Font(ByteBuffer buffer, int height) {
         this.height = height;
+        // Large GUI scales need more atlas space rather than magnifying a small bitmap.
+        this.size = height > 81 ? 4096 : 2048;
 
         // Initialize font
         STBTTFontinfo fontInfo = STBTTFontinfo.create();
@@ -46,7 +48,9 @@ public class Font {
 
         // create and initialise packing context
         STBTTPackContext packContext = STBTTPackContext.create();
-        STBTruetype.stbtt_PackBegin(packContext, bitmap, size, size, 0 ,1);
+        if (!STBTruetype.stbtt_PackBegin(packContext, bitmap, size, size, 0, 1)) {
+            throw new IllegalStateException("Could not initialize font atlas");
+        }
 
         // create the pack range, populate with the specific packing ranges
         STBTTPackRange.Buffer packRange = STBTTPackRange.create(cdata.length);
@@ -59,8 +63,13 @@ public class Font {
         packRange.flip();
 
         // write and finish
-        STBTruetype.stbtt_PackFontRanges(packContext, buffer, 0, packRange);
-        STBTruetype.stbtt_PackEnd(packContext);
+        try {
+            if (!STBTruetype.stbtt_PackFontRanges(packContext, buffer, 0, packRange)) {
+                throw new IllegalStateException("Font glyphs do not fit in the atlas at height " + height);
+            }
+        } finally {
+            STBTruetype.stbtt_PackEnd(packContext);
+        }
 
         // Create texture object and get font scale
         texture = new Texture(size, size, GpuFormat.R8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);

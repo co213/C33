@@ -10,8 +10,8 @@ import com.gaspoweredcake.client33.utils.render.color.Color;
 public class WVisualPreview extends WWidget {
     private final boolean combat;
     private double time;
-    private static final Color GRID = new Color(38, 41, 49);
-    private static final Color BODY = new Color(66, 73, 87);
+    private static final Color GRID = Color.fromHsv(205, 0.24, 0.20);
+    private static final Color BODY = Color.fromHsv(205, 0.26, 0.38);
     public WVisualPreview(boolean combat) { this.combat = combat; }
     @Override protected void onCalculateSize() { width = theme.scale(230); height = theme.scale(155); }
     @Override protected void onRender(GuiRenderer r, double mx, double my, double delta) {

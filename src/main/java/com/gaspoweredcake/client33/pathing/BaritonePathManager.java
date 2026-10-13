@@ -57,12 +57,41 @@ public class BaritonePathManager implements IPathManager {
     }
 
     @Override public boolean isPaused() { return pathingPaused; }
+    @Override
+    public VisualPath getVisualPath(int maxNodes) {
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        var behavior = baritone.getPathingBehavior();
+        boolean active = behavior.isPathing() || behavior.getInProgress().isPresent() || pathingPaused
+            || baritone.getPathingControlManager().mostRecentInControl().filter(IBaritoneProcess::isActive).isPresent();
+        if (!active) return VisualPath.empty();
+        var goal = behavior.getGoal();
+        BlockPos marker = goal instanceof baritone.api.utils.interfaces.IGoalRenderPos renderable
+            ? renderable.getGoalPos().immutable() : null;
+        var executor = behavior.getCurrent();
+        if (executor == null) return new VisualPath(List.of(), marker, getStatus(), 0, -1, true, pathingPaused);
+        var positions = executor.getPath().positions();
+        int start = com.gaspoweredcake.client33.utils.render.PathViewMath.start(executor.getPosition(), positions.size());
+        int end = com.gaspoweredcake.client33.utils.render.PathViewMath.end(start, positions.size(), maxNodes);
+        List<BlockPos> nodes = positions.subList(start, end).stream().map(BlockPos::immutable).toList();
+        double progress = com.gaspoweredcake.client33.utils.render.PathViewMath.progress(executor.getPosition(), positions.size());
+        double ticks = behavior.ticksRemainingInSegment().filter(value -> Double.isFinite(value) && value >= 0).orElse(-1.0);
+        return new VisualPath(nodes, marker, getStatus(), progress, ticks, true, pathingPaused);
+    }
     @Override public boolean supportsCommands() { return true; }
     @Override public String getCommandPrefix() { return BaritoneAPI.getSettings().prefix.value; }
 
     @Override
     public boolean executeCommand(String command) {
         return BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(command);
+    }
+
+    @Override public boolean supportsSchematicBuild() { return true; }
+
+    @Override
+    public void buildSchematic(String name, com.gaspoweredcake.client33.utils.schematic.SchematicBlueprint blueprint,
+                               BlockPos origin, boolean keepAir) {
+        var schematic = new BlueprintSchematic(blueprint, keepAir);
+        BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess().build(name, schematic, origin);
     }
 
     @Override

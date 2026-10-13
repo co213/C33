@@ -13,6 +13,7 @@ import com.gaspoweredcake.client33.events.render.GetFovEvent;
 import com.gaspoweredcake.client33.mixininterface.ICamera;
 import com.gaspoweredcake.client33.systems.modules.Modules;
 import com.gaspoweredcake.client33.systems.modules.render.CameraTweaks;
+import com.gaspoweredcake.client33.systems.modules.render.BaritoneVisuals;
 import com.gaspoweredcake.client33.systems.modules.render.FreeLook;
 import com.gaspoweredcake.client33.systems.modules.render.Freecam;
 import com.gaspoweredcake.client33.systems.modules.render.NoRender;
@@ -52,13 +53,16 @@ public abstract class CameraMixin implements ICamera {
     private float modifyGetMaxZoom(float cameraDist) {
         if (Modules.get().get(Freecam.class).isActive()) return 0;
 
+        BaritoneVisuals watch = Modules.get().get(BaritoneVisuals.class);
+        if (watch.watchCamera()) return watch.watchDistance();
+
         CameraTweaks cameraTweaks = Modules.get().get(CameraTweaks.class);
         return cameraTweaks.isActive() ? (float) cameraTweaks.distance : cameraDist;
     }
 
     @Inject(method = "getMaxZoom", at = @At("HEAD"), cancellable = true)
     private void onGetMaxZoom(float cameraDist, CallbackInfoReturnable<Float> cir) {
-        if (Modules.get().get(CameraTweaks.class).clip()) {
+        if (Modules.get().get(CameraTweaks.class).clip() && !Modules.get().get(BaritoneVisuals.class).watchCamera()) {
             cir.setReturnValue(cameraDist);
         }
     }
@@ -95,6 +99,13 @@ public abstract class CameraMixin implements ICamera {
         } else if (freeLook.isActive()) {
             args.set(0, freeLook.cameraYaw);
             args.set(1, freeLook.cameraPitch);
+        } else {
+            BaritoneVisuals watch = Modules.get().get(BaritoneVisuals.class);
+            if (watch.watchCamera()) {
+                watch.sampleCamera(args.get(0), args.get(1));
+                args.set(0, watch.watchYaw);
+                args.set(1, watch.watchPitch);
+            }
         }
     }
 

@@ -276,3 +276,29 @@ val moduleLogicRegression = tasks.register<JavaExec>("moduleLogicRegression") {
     })
 }
 tasks.check { dependsOn(moduleLogicRegression) }
+
+// Format/upgrade fixtures need Minecraft registries but never launch a game window.
+val schematicRegression = tasks.register<JavaExec>("schematicRegression") {
+    group = "verification"
+    description = "Checks schematic imports, Minecraft block upgrades and converted-file persistence."
+    dependsOn(tasks.named(regression.classesTaskName))
+    classpath = regression.runtimeClasspath + sourceSets.main.get().compileClasspath
+    mainClass.set("com.gaspoweredcake.client33.SchematicRegression")
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(libs.versions.jdk.get().toInt()))
+    })
+}
+tasks.check { dependsOn(schematicRegression) }
+
+// Name resolution needs Minecraft registries and language fixtures, without a graphical client.
+val namesRegression = tasks.register<JavaExec>("namesRegression") {
+    group = "verification"
+    description = "Checks display name language/reload invalidation and mutable stack/enchantment fallbacks."
+    dependsOn(tasks.named(regression.classesTaskName))
+    classpath = regression.runtimeClasspath + sourceSets.main.get().compileClasspath
+    mainClass.set("com.gaspoweredcake.client33.NamesRegression")
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(libs.versions.jdk.get().toInt()))
+    })
+}
+tasks.check { dependsOn(namesRegression) }

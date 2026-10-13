@@ -162,7 +162,7 @@ public abstract class LocalPlayerMixin extends AbstractClientPlayer {
     private boolean wrapSetSprinting(LocalPlayer instance, boolean b) {
         Sprint s = Modules.get().get(Sprint.class);
 
-        return !s.rageSprint() || s.unsprintInWater() && isInWater();
+        return !s.rageSprint() || !s.shouldSprint();
     }
 
     // Rotations

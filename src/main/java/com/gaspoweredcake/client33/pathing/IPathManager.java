@@ -21,6 +21,14 @@ public interface IPathManager {
 
     default boolean isPaused() { return false; }
     default String getStatus() { return isPaused() ? "Paused" : isPathing() ? "Pathing" : "Idle"; }
+    /** Bounded read-only data for overlays; implementations without path access return an empty view. */
+    default VisualPath getVisualPath(int maxNodes) { return VisualPath.empty(); }
+
+    record VisualPath(List<BlockPos> nodes, BlockPos goal, String status, double progress,
+                      double remainingTicks, boolean active, boolean paused) {
+        public VisualPath { nodes = List.copyOf(nodes); }
+        public static VisualPath empty() { return new VisualPath(List.of(), null, "Idle", 0, -1, false, false); }
+    }
     default boolean supportsCommands() { return false; }
     default String getCommandPrefix() { return ""; }
     default boolean executeCommand(String command) { throw new UnsupportedOperationException("This backend has no command interface."); }
@@ -28,6 +36,12 @@ public interface IPathManager {
 
     record CommandInfo(String name, String description, List<String> help) {
         public CommandInfo { help = List.copyOf(help); }
+    }
+
+    default boolean supportsSchematicBuild() { return false; }
+    default void buildSchematic(String name, com.gaspoweredcake.client33.utils.schematic.SchematicBlueprint blueprint,
+                                BlockPos origin, boolean keepAir) {
+        throw new UnsupportedOperationException("Install Baritone for Minecraft 26.2 to build schematics.");
     }
 
     /** Identity of the current goal, when the backend exposes it. */

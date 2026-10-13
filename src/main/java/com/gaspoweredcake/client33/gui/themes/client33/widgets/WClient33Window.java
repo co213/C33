@@ -9,10 +9,8 @@ import com.gaspoweredcake.client33.gui.renderer.GuiRenderer;
 import com.gaspoweredcake.client33.gui.themes.client33.Client33Widget;
 import com.gaspoweredcake.client33.gui.widgets.WWidget;
 import com.gaspoweredcake.client33.gui.widgets.containers.WWindow;
-import com.gaspoweredcake.client33.utils.render.color.Color;
 
 public class WClient33Window extends WWindow implements Client33Widget {
-    private static final Color HEADER_END = new Color(116, 24, 40, 255);
 
     public WClient33Window(WWidget icon, String title) {
         super(icon, title);
@@ -26,6 +24,8 @@ public class WClient33Window extends WWindow implements Client33Widget {
     @Override
     protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
         if (expanded || animProgress > 0) {
+            double shadow = theme.scale(3);
+            renderer.roundedQuad(x + shadow, y + shadow, width, height, theme.scale(7), theme().windowShadow.get());
             renderBackground(renderer, this, theme().outlineColor.get(), theme().backgroundColor.get());
         }
     }
@@ -40,7 +40,7 @@ public class WClient33Window extends WWindow implements Client33Widget {
             renderer.roundedQuad(this, theme.scale(6), theme().outlineColor.get());
             double inset = theme.scale(1);
             renderer.roundedQuad(x + inset, y + inset, width - inset * 2, height - inset * 2,
-                theme.scale(5), HEADER_END);
+                theme.scale(5), theme().headerHighlight.get(), theme().headerBackground.get());
         }
     }
 }
